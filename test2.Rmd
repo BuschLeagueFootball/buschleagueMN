@@ -1,0 +1,75 @@
+---
+title: "Untitled"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: rows
+    vertical_layout: scroll
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+```
+
+
+HOME
+=====================================
+
+### Franchises
+Test
+
+### Rankings
+Test
+
+### What's Happening?
+Test
+
+
+NFL PLAYERS
+===================================== 
+
+### WAR Stats
+Test
+
+### Draft History
+Test
+
+FRANCHISES
+===================================== 
+
+### Back of football trading card
+Test
+
+SEASONS
+===================================== 
+
+### Champion/Runner up
+Test
+
+### Power Rank
+Test
+
+### Standings
+Test
+
+
+RECORDS
+===================================== 
+
+### Leaderboard
+Test
+
+### Records
+Test
+
+
+NEWS & TALK
+===================================== 
+
+### twitter feed
+Test
+
+### slack feed
+Test
+
+### Talking Busch feed
+Test
