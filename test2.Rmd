@@ -2,25 +2,237 @@
 title: "Busch League Reference"
 output: 
   flexdashboard::flex_dashboard:
+    logo: blf_logo_icon.png
     orientation: columns
     vertical_layout: scroll
 ---
 
 ```{r setup, include=FALSE}
 library(flexdashboard)
+library(tidyverse)
+
+ggl_sheet <- "https://docs.google.com/spreadsheets/d/e/2PACX-1vRPAR9n5KuCw3Mw_Ka48khDgK28rrnD4XujJ_tAadcA_kmbYjZF6ZFKX-7WGRHBlY47N8jP6G8JgG1k/pub?gid=0&single=true&output=csv"
+
+games_raw <- read_csv(ggl_sheet)
+
+games_raw$Team <- toupper(games_raw$Team)
+
+games_raw <- games_raw %>%
+  mutate_all(~replace(., is.na(.), 0))
+
+write_csv(games_raw, "gamessource.csv")
+
+this_year <- max(games_raw$Year)
+
+games_ty <- games_raw %>%
+  filter(Year == this_year) %>%
+  arrange(desc(Week))
+
+games_allplay <- games_raw %>%
+  group_by(Week, Year) %>%
+  mutate(w_rank = ifelse(Year == 2008, rank(PF) / 4 + 1, rank(PF))) %>%
+  mutate(APW = as.integer(w_rank - 1)) %>%
+  mutate(l_rank = ifelse(Year == 2008, rank(-PF) / 4 + 1, rank(-PF))) %>%
+  mutate(APL = as.integer(l_rank - 1)) %>%
+  select(-w_rank, -l_rank)
+
+this_week <- games_ty[[1, 2]]
+
+ty_ppg <- mean(games_raw$PF)
+
+games_adj <- games_raw %>%
+  group_by(Year) %>%
+  mutate(ppg = mean(PF)) %>%
+  ungroup() %>%
+  mutate(Adj_PF = PF / ppg * ty_ppg) %>%
+  select(-ppg)
+
+team01 <- "ADAM HARTMAN"
+team02 <- "DAVID PIKUS"
+team03 <- "DERRIK HARTMAN"
+team04 <- "DREW VOGT"
+team05 <- "JOHN THOMPSON"
+team06 <- "MATT TRAEN"
+team07 <- "MAX APONTE"
+team08 <- "PHIL BASTRON"
+team09 <- "TIM GREVE"
+team10 <- "TIM LANG"
+team11 <- "TODD TRAEN"
+team12 <- "TREVOR SOUPIR"
+
+get_founded <- function(teamid) {
+  games_raw %>% 
+  filter(Team == teamid) %>% 
+  filter(Year == min(Year)) %>% 
+  filter(Week == 1) %>% 
+  pull(Year)
+}
+
+get_buschbowls <- function(teamid) {
+  games_raw %>% 
+  filter(Team == teamid) %>% 
+  filter(Type == "Championship") %>% 
+  mutate(w_l = as.numeric(as.logical(PF > PA))) %>%
+  summarise(champs = sum(w_l)) %>%
+  pull(champs)
+}
+
+get_po_appear <- function(teamid) {
+  games_raw %>% 
+  filter(Team == teamid) %>% 
+  filter(Type == "Playoffs") %>%
+  group_by(Year) %>%
+  summarize(mean(PF)) %>%
+  nrow()
+}
+
+get_winning_seasons <- function(teamid) {
+  games_raw %>% 
+  filter(Team == teamid) %>% 
+  mutate(w_l = as.numeric(as.logical(PF > PA))) %>%
+  group_by(Year) %>%
+  summarise(Win = sum(w_l), Loss = sum(w_l == 0), 
+            Pct = as.double(Win / (Win + Loss))) %>%
+  mutate(over500 = as.numeric(as.logical(Pct > .5))) %>%
+  summarise(winning_seasons = sum(over500)) %>%
+  pull(winning_seasons)
+}
+
+at_wpct_max <- games_raw %>%
+  group_by(Team) %>%
+  filter(n() > 23) %>%
+  ungroup() %>%
+  mutate(w_l = as.numeric(as.logical(PF > PA))) %>%
+  group_by(Team) %>%
+  summarise(Win = sum(w_l), Loss = sum(w_l == 0), Pct = as.integer(Win / (Win + Loss) * 1000)) %>%
+  arrange(desc(Pct)) %>%
+  head(1) %>%
+  pull(Pct)
+
+at_wpct_min <- games_raw %>%
+  group_by(Team) %>%
+  filter(n() > 23) %>%
+  ungroup() %>%
+  mutate(w_l = as.numeric(as.logical(PF > PA))) %>%
+  group_by(Team) %>%
+  summarise(Win = sum(w_l), Loss = sum(w_l == 0), Pct = as.integer(Win / (Win + Loss) * 1000)) %>%
+  arrange(Pct) %>%
+  head(1) %>%
+  pull(Pct)
+
+at_ppg_max <- games_adj %>%
+  group_by(Team) %>%
+  filter(n() > 23) %>%
+  ungroup() %>%
+  group_by(Team) %>%
+  summarise(PPG = mean(Adj_PF)) %>%
+  arrange(desc(PPG)) %>%
+  head(1) %>%
+  pull(PPG) %>%
+  as.integer()
+
+at_ppg_min <- games_adj %>%
+  group_by(Team) %>%
+  filter(n() > 23) %>%
+  ungroup() %>%
+  group_by(Team) %>%
+  summarise(PPG = mean(Adj_PF)) %>%
+  arrange(PPG) %>%
+  head(1) %>%
+  pull(PPG) %>%
+  as.integer()
+
+y12t_wpct_max <- games_raw %>%
+  group_by(Team) %>%
+  filter(n() > 23) %>%
+  ungroup() %>%
+  filter(Year > 2012) %>%
+  mutate(w_l = as.numeric(as.logical(PF > PA))) %>%
+  group_by(Team) %>%
+  summarise(Win = sum(w_l), Loss = sum(w_l == 0), Pct = as.integer(Win / (Win + Loss) * 1000)) %>%
+  arrange(desc(Pct)) %>%
+  head(1) %>%
+  pull(Pct) %>%
+  as.integer()
+
+y12t_wpct_min <- games_raw %>%
+  group_by(Team) %>%
+  filter(n() > 23) %>%
+  ungroup() %>%
+  filter(Year > 2012) %>%
+  mutate(w_l = as.numeric(as.logical(PF > PA))) %>%
+  group_by(Team) %>%
+  summarise(Win = sum(w_l), Loss = sum(w_l == 0), Pct = as.integer(Win / (Win + Loss) * 1000)) %>%
+  arrange(Pct) %>%
+  head(1) %>%
+  pull(Pct) %>%
+  as.integer()
+
+y12t_ppg_max <- games_adj %>%
+  group_by(Team) %>%
+  filter(n() > 23) %>%
+  ungroup() %>%
+  filter(Year > 2012) %>%
+  group_by(Team) %>%
+  summarise(PPG = mean(Adj_PF)) %>%
+  arrange(desc(PPG)) %>%
+  head(1) %>%
+  pull(PPG) %>%
+  as.integer()
+
+y12t_ppg_min <- games_adj %>%
+  group_by(Team) %>%
+  filter(n() > 23) %>%
+  ungroup() %>%
+  filter(Year > 2012) %>%
+  group_by(Team) %>%
+  summarise(PPG = mean(Adj_PF)) %>%
+  arrange(PPG) %>%
+  head(1) %>%
+  pull(PPG) %>%
+  as.integer()
+
+get_at_wpct <- function(teamid) {
+  games_raw %>%
+  filter(Team == teamid) %>%
+  mutate(w_l = as.numeric(as.logical(PF > PA))) %>%
+  summarise(Win = sum(w_l), Loss = sum(w_l == 0), Pct = as.integer(Win / (Win + Loss) * 1000)) %>%
+  pull(Pct)
+}
+
+get_at_ppg <- function(teamid) {
+  games_adj %>%
+  filter(Team == teamid) %>%
+  summarise(PPG = mean(Adj_PF)) %>%
+  pull(PPG) %>%
+  as.integer()
+}
+
+get_12t_wpct <- function(teamid) {
+  games_raw %>%
+  filter(Team == teamid) %>%
+  filter(Year > 2012) %>%
+  mutate(w_l = as.numeric(as.logical(PF > PA))) %>%
+  summarise(Win = sum(w_l), Loss = sum(w_l == 0), Pct = as.integer(Win / (Win + Loss) * 1000)) %>%
+  pull(Pct)
+}
+
+get_12t_ppg <- function(teamid) {
+  games_adj %>%
+  filter(Team == teamid) %>%
+  filter(Year > 2012) %>%
+  summarise(PPG = mean(Adj_PF)) %>%
+  pull(PPG) %>%
+  as.integer()
+}
+
+
 ```
 
 
-HOME {data-orientation=rows}
+HOME
 =====================================
 
-Row
----
-### Franchises
-Test
-
-Row
----
 ### Rankings
 Test
 
@@ -40,47 +252,775 @@ Test - shiny for viewing by position
 ### Draft History
 Test - shiny for year?
 
-FRANCHISES
+
+`r team01` {data-navmenu="FRANCHISES" data-orientation=rows}
 ===================================== 
 
-Column {.tabset}
----
+Row {data-height=30}
+-------------------------------------
+**`r team01`**
 
-### Adam Hartman
-Test - menu level b?
+Row
+-------------------------------------
 
-### David Pikus
-Test
+### Founded
+```{r}
+founded <- get_founded(team01)
+valueBox(founded, icon = "fa-calendar-plus")
+```
 
-### Derrik Hartman
-Test
+### Busch Bowls
+```{r}
+champs <- get_buschbowls(team01)
+valueBox(champs, icon = "fa-trophy")
+```
 
-### Drew Vogt
-Test
+### Playoff Appearances
+```{r}
+playoff_appear <- get_po_appear(team01)
+valueBox(playoff_appear, icon = "fa-award")
+```
 
-### John Thompson
-Test
+### Winning Seasons
+```{r}
+winning_seasons <- get_winning_seasons(team01)
+valueBox(winning_seasons, icon = "fa-star-half-alt")
+```
 
-### Matt Traen
-Test
+Row
+-------------------------------------
+### All Time Win Percentage
 
-### Max Aponte
-Test
+```{r}
+wpct <- get_at_wpct(team01)
+gauge(wpct, min = at_wpct_min, max = at_wpct_max)
+```
 
-### Phil Bastron
-Test
+### All Time PPG (Adjusted)
 
-### Tim Greve
-Test
+```{r}
+ppg <- get_at_ppg(team01)
+gauge(ppg, min = at_ppg_min, max = at_ppg_max)
+```
 
-### Tim Lang
-Test
+### 12T Era Win Percentage
 
-### Todd Traen
-Test
+```{r}
+wpct <- get_12t_wpct(team01)
+gauge(wpct, min = y12t_wpct_min, max = y12t_wpct_max)
+```
 
-### Trevor Soupir
-Test
+### 12T Era PPG (Adjusted)
+
+```{r}
+ppg <- get_12t_ppg(team01)
+gauge(ppg, min = y12t_ppg_min, max = y12t_ppg_max)
+```
+
+
+`r team02` {data-navmenu="FRANCHISES" data-orientation=rows}
+===================================== 
+Row {data-height=30}
+-------------------------------------
+**`r team02`**
+
+Row
+-------------------------------------
+
+### Founded
+```{r}
+founded <- get_founded(team02)
+valueBox(founded, icon = "fa-calendar-plus")
+```
+
+### Busch Bowls
+```{r}
+champs <- get_buschbowls(team02)
+valueBox(champs, icon = "fa-trophy")
+```
+
+### Playoff Appearances
+```{r}
+playoff_appear <- get_po_appear(team02)
+valueBox(playoff_appear, icon = "fa-award")
+```
+
+### Winning Seasons
+```{r}
+winning_seasons <- get_winning_seasons(team02)
+valueBox(winning_seasons, icon = "fa-star-half-alt")
+```
+
+Row
+-------------------------------------
+### All Time Win Percentage
+
+```{r}
+wpct <- get_at_wpct(team02)
+gauge(wpct, min = at_wpct_min, max = at_wpct_max)
+```
+
+### All Time PPG (Adjusted)
+
+```{r}
+ppg <- get_at_ppg(team02)
+gauge(ppg, min = at_ppg_min, max = at_ppg_max)
+```
+
+### 12T Era Win Percentage
+
+```{r}
+wpct <- get_12t_wpct(team02)
+gauge(wpct, min = y12t_wpct_min, max = y12t_wpct_max)
+```
+
+### 12T Era PPG (Adjusted)
+
+```{r}
+ppg <- get_12t_ppg(team02)
+gauge(ppg, min = y12t_ppg_min, max = y12t_ppg_max)
+```
+
+
+`r team03` {data-navmenu="FRANCHISES" data-orientation=rows}
+===================================== 
+Row {data-height=30}
+-------------------------------------
+**`r team03`**
+
+Row
+-------------------------------------
+
+### Founded
+```{r}
+founded <- get_founded(team03)
+valueBox(founded, icon = "fa-calendar-plus")
+```
+
+### Busch Bowls
+```{r}
+champs <- get_buschbowls(team03)
+valueBox(champs, icon = "fa-trophy")
+```
+
+### Playoff Appearances
+```{r}
+playoff_appear <- get_po_appear(team03)
+valueBox(playoff_appear, icon = "fa-award")
+```
+
+### Winning Seasons
+```{r}
+winning_seasons <- get_winning_seasons(team03)
+valueBox(winning_seasons, icon = "fa-star-half-alt")
+```
+
+Row
+-------------------------------------
+### All Time Win Percentage
+
+```{r}
+wpct <- get_at_wpct(team03)
+gauge(wpct, min = at_wpct_min, max = at_wpct_max)
+```
+
+### All Time PPG (Adjusted)
+
+```{r}
+ppg <- get_at_ppg(team03)
+gauge(ppg, min = at_ppg_min, max = at_ppg_max)
+```
+
+### 12T Era Win Percentage
+
+```{r}
+wpct <- get_12t_wpct(team03)
+gauge(wpct, min = y12t_wpct_min, max = y12t_wpct_max)
+```
+
+### 12T Era PPG (Adjusted)
+
+```{r}
+ppg <- get_12t_ppg(team03)
+gauge(ppg, min = y12t_ppg_min, max = y12t_ppg_max)
+```
+
+
+`r team04` {data-navmenu="FRANCHISES" data-orientation=rows}
+===================================== 
+Row {data-height=30}
+-------------------------------------
+**`r team04`**
+
+Row
+-------------------------------------
+
+### Founded
+```{r}
+founded <- get_founded(team04)
+valueBox(founded, icon = "fa-calendar-plus")
+```
+
+### Busch Bowls
+```{r}
+champs <- get_buschbowls(team04)
+valueBox(champs, icon = "fa-trophy")
+```
+
+### Playoff Appearances
+```{r}
+playoff_appear <- get_po_appear(team04)
+valueBox(playoff_appear, icon = "fa-award")
+```
+
+### Winning Seasons
+```{r}
+winning_seasons <- get_winning_seasons(team04)
+valueBox(winning_seasons, icon = "fa-star-half-alt")
+```
+
+Row
+-------------------------------------
+### All Time Win Percentage
+
+```{r}
+wpct <- get_at_wpct(team04)
+gauge(wpct, min = at_wpct_min, max = at_wpct_max)
+```
+
+### All Time PPG (Adjusted)
+
+```{r}
+ppg <- get_at_ppg(team04)
+gauge(ppg, min = at_ppg_min, max = at_ppg_max)
+```
+
+### 12T Era Win Percentage
+
+```{r}
+wpct <- get_12t_wpct(team04)
+gauge(wpct, min = y12t_wpct_min, max = y12t_wpct_max)
+```
+
+### 12T Era PPG (Adjusted)
+
+```{r}
+ppg <- get_12t_ppg(team04)
+gauge(ppg, min = y12t_ppg_min, max = y12t_ppg_max)
+```
+
+
+`r team05` {data-navmenu="FRANCHISES" data-orientation=rows}
+===================================== 
+Row {data-height=30}
+-------------------------------------
+**`r team05`**
+
+Row
+-------------------------------------
+
+### Founded
+```{r}
+founded <- get_founded(team05)
+valueBox(founded, icon = "fa-calendar-plus")
+```
+
+### Busch Bowls
+```{r}
+champs <- get_buschbowls(team05)
+valueBox(champs, icon = "fa-trophy")
+```
+
+### Playoff Appearances
+```{r}
+playoff_appear <- get_po_appear(team05)
+valueBox(playoff_appear, icon = "fa-award")
+```
+
+### Winning Seasons
+```{r}
+winning_seasons <- get_winning_seasons(team05)
+valueBox(winning_seasons, icon = "fa-star-half-alt")
+```
+
+Row
+-------------------------------------
+### All Time Win Percentage
+
+```{r}
+wpct <- get_at_wpct(team05)
+gauge(wpct, min = at_wpct_min, max = at_wpct_max)
+```
+
+### All Time PPG (Adjusted)
+
+```{r}
+ppg <- get_at_ppg(team05)
+gauge(ppg, min = at_ppg_min, max = at_ppg_max)
+```
+
+### 12T Era Win Percentage
+
+```{r}
+wpct <- get_12t_wpct(team05)
+gauge(wpct, min = y12t_wpct_min, max = y12t_wpct_max)
+```
+
+### 12T Era PPG (Adjusted)
+
+```{r}
+ppg <- get_12t_ppg(team05)
+gauge(ppg, min = y12t_ppg_min, max = y12t_ppg_max)
+```
+
+
+`r team06` {data-navmenu="FRANCHISES" data-orientation=rows}
+===================================== 
+Row {data-height=30}
+-------------------------------------
+**`r team06`**
+
+Row
+-------------------------------------
+
+### Founded
+```{r}
+founded <- get_founded(team06)
+valueBox(founded, icon = "fa-calendar-plus")
+```
+
+### Busch Bowls
+```{r}
+champs <- get_buschbowls(team06)
+valueBox(champs, icon = "fa-trophy")
+```
+
+### Playoff Appearances
+```{r}
+playoff_appear <- get_po_appear(team06)
+valueBox(playoff_appear, icon = "fa-award")
+```
+
+### Winning Seasons
+```{r}
+winning_seasons <- get_winning_seasons(team06)
+valueBox(winning_seasons, icon = "fa-star-half-alt")
+```
+
+Row
+-------------------------------------
+### All Time Win Percentage
+
+```{r}
+wpct <- get_at_wpct(team06)
+gauge(wpct, min = at_wpct_min, max = at_wpct_max)
+```
+
+### All Time PPG (Adjusted)
+
+```{r}
+ppg <- get_at_ppg(team06)
+gauge(ppg, min = at_ppg_min, max = at_ppg_max)
+```
+
+### 12T Era Win Percentage
+
+```{r}
+wpct <- get_12t_wpct(team06)
+gauge(wpct, min = y12t_wpct_min, max = y12t_wpct_max)
+```
+
+### 12T Era PPG (Adjusted)
+
+```{r}
+ppg <- get_12t_ppg(team06)
+gauge(ppg, min = y12t_ppg_min, max = y12t_ppg_max)
+```
+
+
+`r team07` {data-navmenu="FRANCHISES" data-orientation=rows}
+===================================== 
+Row {data-height=30}
+-------------------------------------
+**`r team07`**
+
+Row
+-------------------------------------
+
+### Founded
+```{r}
+founded <- get_founded(team07)
+valueBox(founded, icon = "fa-calendar-plus")
+```
+
+### Busch Bowls
+```{r}
+champs <- get_buschbowls(team07)
+valueBox(champs, icon = "fa-trophy")
+```
+
+### Playoff Appearances
+```{r}
+playoff_appear <- get_po_appear(team07)
+valueBox(playoff_appear, icon = "fa-award")
+```
+
+### Winning Seasons
+```{r}
+winning_seasons <- get_winning_seasons(team07)
+valueBox(winning_seasons, icon = "fa-star-half-alt")
+```
+
+Row
+-------------------------------------
+### All Time Win Percentage
+
+```{r}
+wpct <- get_at_wpct(team07)
+gauge(wpct, min = at_wpct_min, max = at_wpct_max)
+```
+
+### All Time PPG (Adjusted)
+
+```{r}
+ppg <- get_at_ppg(team07)
+gauge(ppg, min = at_ppg_min, max = at_ppg_max)
+```
+
+### 12T Era Win Percentage
+
+```{r}
+wpct <- get_12t_wpct(team07)
+gauge(wpct, min = y12t_wpct_min, max = y12t_wpct_max)
+```
+
+### 12T Era PPG (Adjusted)
+
+```{r}
+ppg <- get_12t_ppg(team07)
+gauge(ppg, min = y12t_ppg_min, max = y12t_ppg_max)
+```
+
+
+`r team08` {data-navmenu="FRANCHISES" data-orientation=rows}
+===================================== 
+Row {data-height=30}
+-------------------------------------
+**`r team08`**
+
+Row
+-------------------------------------
+
+### Founded
+```{r}
+founded <- get_founded(team08)
+valueBox(founded, icon = "fa-calendar-plus")
+```
+
+### Busch Bowls
+```{r}
+champs <- get_buschbowls(team08)
+valueBox(champs, icon = "fa-trophy")
+```
+
+### Playoff Appearances
+```{r}
+playoff_appear <- get_po_appear(team08)
+valueBox(playoff_appear, icon = "fa-award")
+```
+
+### Winning Seasons
+```{r}
+winning_seasons <- get_winning_seasons(team08)
+valueBox(winning_seasons, icon = "fa-star-half-alt")
+```
+
+Row
+-------------------------------------
+### All Time Win Percentage
+
+```{r}
+wpct <- get_at_wpct(team08)
+gauge(wpct, min = at_wpct_min, max = at_wpct_max)
+```
+
+### All Time PPG (Adjusted)
+
+```{r}
+ppg <- get_at_ppg(team08)
+gauge(ppg, min = at_ppg_min, max = at_ppg_max)
+```
+
+### 12T Era Win Percentage
+
+```{r}
+wpct <- get_12t_wpct(team08)
+gauge(wpct, min = y12t_wpct_min, max = y12t_wpct_max)
+```
+
+### 12T Era PPG (Adjusted)
+
+```{r}
+ppg <- get_12t_ppg(team08)
+gauge(ppg, min = y12t_ppg_min, max = y12t_ppg_max)
+```
+
+
+`r team09` {data-navmenu="FRANCHISES" data-orientation=rows}
+===================================== 
+Row {data-height=30}
+-------------------------------------
+**`r team09`**
+
+Row
+-------------------------------------
+
+### Founded
+```{r}
+founded <- get_founded(team09)
+valueBox(founded, icon = "fa-calendar-plus")
+```
+
+### Busch Bowls
+```{r}
+champs <- get_buschbowls(team09)
+valueBox(champs, icon = "fa-trophy")
+```
+
+### Playoff Appearances
+```{r}
+playoff_appear <- get_po_appear(team09)
+valueBox(playoff_appear, icon = "fa-award")
+```
+
+### Winning Seasons
+```{r}
+winning_seasons <- get_winning_seasons(team09)
+valueBox(winning_seasons, icon = "fa-star-half-alt")
+```
+
+Row
+-------------------------------------
+### All Time Win Percentage
+
+```{r}
+wpct <- get_at_wpct(team09)
+gauge(wpct, min = at_wpct_min, max = at_wpct_max)
+```
+
+### All Time PPG (Adjusted)
+
+```{r}
+ppg <- get_at_ppg(team09)
+gauge(ppg, min = at_ppg_min, max = at_ppg_max)
+```
+
+### 12T Era Win Percentage
+
+```{r}
+wpct <- get_12t_wpct(team09)
+gauge(wpct, min = y12t_wpct_min, max = y12t_wpct_max)
+```
+
+### 12T Era PPG (Adjusted)
+
+```{r}
+ppg <- get_12t_ppg(team09)
+gauge(ppg, min = y12t_ppg_min, max = y12t_ppg_max)
+```
+
+
+`r team10` {data-navmenu="FRANCHISES" data-orientation=rows}
+===================================== 
+Row {data-height=30}
+-------------------------------------
+**`r team10`**
+
+Row
+-------------------------------------
+
+### Founded
+```{r}
+founded <- get_founded(team10)
+valueBox(founded, icon = "fa-calendar-plus")
+```
+
+### Busch Bowls
+```{r}
+champs <- get_buschbowls(team10)
+valueBox(champs, icon = "fa-trophy")
+```
+
+### Playoff Appearances
+```{r}
+playoff_appear <- get_po_appear(team10)
+valueBox(playoff_appear, icon = "fa-award")
+```
+
+### Winning Seasons
+```{r}
+winning_seasons <- get_winning_seasons(team10)
+valueBox(winning_seasons, icon = "fa-star-half-alt")
+```
+
+Row
+-------------------------------------
+### All Time Win Percentage
+
+```{r}
+wpct <- get_at_wpct(team10)
+gauge(wpct, min = at_wpct_min, max = at_wpct_max)
+```
+
+### All Time PPG (Adjusted)
+
+```{r}
+ppg <- get_at_ppg(team10)
+gauge(ppg, min = at_ppg_min, max = at_ppg_max)
+```
+
+### 12T Era Win Percentage
+
+```{r}
+wpct <- get_12t_wpct(team10)
+gauge(wpct, min = y12t_wpct_min, max = y12t_wpct_max)
+```
+
+### 12T Era PPG (Adjusted)
+
+```{r}
+ppg <- get_12t_ppg(team10)
+gauge(ppg, min = y12t_ppg_min, max = y12t_ppg_max)
+```
+
+
+`r team11` {data-navmenu="FRANCHISES" data-orientation=rows}
+===================================== 
+Row {data-height=30}
+-------------------------------------
+**`r team11`**
+
+Row
+-------------------------------------
+
+### Founded
+```{r}
+founded <- get_founded(team11)
+valueBox(founded, icon = "fa-calendar-plus")
+```
+
+### Busch Bowls
+```{r}
+champs <- get_buschbowls(team11)
+valueBox(champs, icon = "fa-trophy")
+```
+
+### Playoff Appearances
+```{r}
+playoff_appear <- get_po_appear(team11)
+valueBox(playoff_appear, icon = "fa-award")
+```
+
+### Winning Seasons
+```{r}
+winning_seasons <- get_winning_seasons(team11)
+valueBox(winning_seasons, icon = "fa-star-half-alt")
+```
+
+Row
+-------------------------------------
+### All Time Win Percentage
+
+```{r}
+wpct <- get_at_wpct(team11)
+gauge(wpct, min = at_wpct_min, max = at_wpct_max)
+```
+
+### All Time PPG (Adjusted)
+
+```{r}
+ppg <- get_at_ppg(team11)
+gauge(ppg, min = at_ppg_min, max = at_ppg_max)
+```
+
+### 12T Era Win Percentage
+
+```{r}
+wpct <- get_12t_wpct(team11)
+gauge(wpct, min = y12t_wpct_min, max = y12t_wpct_max)
+```
+
+### 12T Era PPG (Adjusted)
+
+```{r}
+ppg <- get_12t_ppg(team11)
+gauge(ppg, min = y12t_ppg_min, max = y12t_ppg_max)
+```
+
+
+`r team12` {data-navmenu="FRANCHISES" data-orientation=rows}
+===================================== 
+Row {data-height=30}
+-------------------------------------
+**`r team12`**
+
+Row
+-------------------------------------
+
+### Founded
+```{r}
+founded <- get_founded(team12)
+valueBox(founded, icon = "fa-calendar-plus")
+```
+
+### Busch Bowls
+```{r}
+champs <- get_buschbowls(team12)
+valueBox(champs, icon = "fa-trophy")
+```
+
+### Playoff Appearances
+```{r}
+playoff_appear <- get_po_appear(team12)
+valueBox(playoff_appear, icon = "fa-award")
+```
+
+### Winning Seasons
+```{r}
+winning_seasons <- get_winning_seasons(team12)
+valueBox(winning_seasons, icon = "fa-star-half-alt")
+```
+
+Row
+-------------------------------------
+### All Time Win Percentage
+
+```{r}
+wpct <- get_at_wpct(team12)
+gauge(wpct, min = at_wpct_min, max = at_wpct_max)
+```
+
+### All Time PPG (Adjusted)
+
+```{r}
+ppg <- get_at_ppg(team12)
+gauge(ppg, min = at_ppg_min, max = at_ppg_max)
+```
+
+### 12T Era Win Percentage
+
+```{r}
+wpct <- get_12t_wpct(team12)
+gauge(wpct, min = y12t_wpct_min, max = y12t_wpct_max)
+```
+
+### 12T Era PPG (Adjusted)
+
+```{r}
+ppg <- get_12t_ppg(team12)
+gauge(ppg, min = y12t_ppg_min, max = y12t_ppg_max)
+```
+
 
 SEASONS
 ===================================== 
