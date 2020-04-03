@@ -1,5 +1,5 @@
 ---
-title: "Untitled"
+title: "Busch League Reference"
 output: 
   flexdashboard::flex_dashboard:
     orientation: columns
@@ -11,12 +11,16 @@ library(flexdashboard)
 ```
 
 
-HOME
+HOME {data-orientation=rows}
 =====================================
 
+Row
+---
 ### Franchises
 Test
 
+Row
+---
 ### Rankings
 Test
 
@@ -27,16 +31,55 @@ Test
 NFL PLAYERS
 ===================================== 
 
+Column {.tabset}
+---
+
 ### WAR Stats
-Test
+Test - shiny for viewing by position
 
 ### Draft History
-Test
+Test - shiny for year?
 
 FRANCHISES
 ===================================== 
 
-### Back of football trading card
+Column {.tabset}
+---
+
+### Adam Hartman
+Test - menu level b?
+
+### David Pikus
+Test
+
+### Derrik Hartman
+Test
+
+### Drew Vogt
+Test
+
+### John Thompson
+Test
+
+### Matt Traen
+Test
+
+### Max Aponte
+Test
+
+### Phil Bastron
+Test
+
+### Tim Greve
+Test
+
+### Tim Lang
+Test
+
+### Todd Traen
+Test
+
+### Trevor Soupir
 Test
 
 SEASONS

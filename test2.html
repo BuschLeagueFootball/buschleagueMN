@@ -8,9 +8,9 @@
 
 
 
-<title>Untitled</title>
+<title>Busch League Reference</title>
 
-<meta property="og:title" content="Untitled" />
+<meta property="og:title" content="Busch League Reference" />
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 
@@ -841,7 +841,7 @@ body {
   
 </span>
 <span class="navbar-brand">
-  Untitled
+  Busch League Reference
   <span class="navbar-author">
         </span>
 </span>
@@ -2622,12 +2622,20 @@ window.FlexDashboardComponents.push({
 
 <div id="dashboard-container">
 
-<div id="home" class="section level1">
+<div id="sidebar" class="section level1 sidebar">
+<h1>Sidebar</h1>
+</div>
+<div id="home" class="section level1" data-orientation="rows">
 <h1>HOME</h1>
+<div id="row" class="section level2">
+<h2>Row</h2>
 <div id="franchises" class="section level3">
 <h3>Franchises</h3>
 <p>Test</p>
 </div>
+</div>
+<div id="row-1" class="section level2">
+<h2>Row</h2>
 <div id="rankings" class="section level3">
 <h3>Rankings</h3>
 <p>Test</p>
@@ -2637,8 +2645,11 @@ window.FlexDashboardComponents.push({
 <p>Test</p>
 </div>
 </div>
+</div>
 <div id="nfl-players" class="section level1">
 <h1>NFL PLAYERS</h1>
+<div id="column" class="section level2 tabset">
+<h2>Column</h2>
 <div id="war-stats" class="section level3">
 <h3>WAR Stats</h3>
 <p>Test</p>
@@ -2648,11 +2659,59 @@ window.FlexDashboardComponents.push({
 <p>Test</p>
 </div>
 </div>
+</div>
 <div id="franchises-1" class="section level1">
 <h1>FRANCHISES</h1>
-<div id="back-of-football-trading-card" class="section level3">
-<h3>Back of football trading card</h3>
+<div id="column-1" class="section level2 tabset">
+<h2>Column</h2>
+<div id="adam-hartman" class="section level3">
+<h3>Adam Hartman</h3>
 <p>Test</p>
+</div>
+<div id="david-pikus" class="section level3">
+<h3>David Pikus</h3>
+<p>Test</p>
+</div>
+<div id="derrik-hartman" class="section level3">
+<h3>Derrik Hartman</h3>
+<p>Test</p>
+</div>
+<div id="drew-vogt" class="section level3">
+<h3>Drew Vogt</h3>
+<p>Test</p>
+</div>
+<div id="john-thompson" class="section level3">
+<h3>John Thompson</h3>
+<p>Test</p>
+</div>
+<div id="matt-traen" class="section level3">
+<h3>Matt Traen</h3>
+<p>Test</p>
+</div>
+<div id="max-aponte" class="section level3">
+<h3>Max Aponte</h3>
+<p>Test</p>
+</div>
+<div id="phil-bastron" class="section level3">
+<h3>Phil Bastron</h3>
+<p>Test</p>
+</div>
+<div id="tim-greve" class="section level3">
+<h3>Tim Greve</h3>
+<p>Test</p>
+</div>
+<div id="tim-lang" class="section level3">
+<h3>Tim Lang</h3>
+<p>Test</p>
+</div>
+<div id="todd-traen" class="section level3">
+<h3>Todd Traen</h3>
+<p>Test</p>
+</div>
+<div id="trevor-soupir" class="section level3">
+<h3>Trevor Soupir</h3>
+<p>Test</p>
+</div>
 </div>
 </div>
 <div id="seasons" class="section level1">
@@ -2720,7 +2779,7 @@ $(document).ready(function () {
   FlexDashboard.init({
     theme: "cosmo",
     fillPage: false,
-    orientation: "rows",
+    orientation: "columns",
     storyboard: false,
     defaultFigWidth: 576,
     defaultFigHeight: 460,
