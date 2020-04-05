@@ -10,8 +10,8 @@ output:
 ```{r setup, include=FALSE}
 library(flexdashboard)
 library(tidyverse)
+library(knitr)
 library(kableExtra)
-library(formattable)
 
 ggl_sheet <- "https://docs.google.com/spreadsheets/d/e/2PACX-1vRPAR9n5KuCw3Mw_Ka48khDgK28rrnD4XujJ_tAadcA_kmbYjZF6ZFKX-7WGRHBlY47N8jP6G8JgG1k/pub?gid=0&single=true&output=csv"
 
@@ -21,6 +21,8 @@ games_raw$Team <- toupper(games_raw$Team)
 
 games_raw <- games_raw %>%
   mutate_all(~replace(., is.na(.), 0))
+
+games_raw$Team <- as.factor(games_raw$Team)
 
 write_csv(games_raw, "gamessource.csv")
 
@@ -230,42 +232,45 @@ get_12t_ppg <- function(teamid) {
 
 get_alltime_stats <- function(teamid) {
   Reg_season <- games_adj %>%
-  filter(Team == teamid) %>%
   filter(Type == "Reg") %>%
   mutate(w_l = as.numeric(PF > PA)) %>%
-  group_by(Team) %>%
+  group_by(Team, .drop = FALSE) %>%
   summarise(W = sum(w_l), 
             L = sum(w_l == 0), 
             Pct = as.integer(W / (W + L) * 1000), 
-            PPG = mean(Adj_PF))
+            PPG = mean(Adj_PF)) %>%
+  filter(Team == teamid)
+
 
 Playoffs <- games_adj %>%
-  filter(Team == teamid) %>%
   filter(Type == "Playoffs") %>%
   mutate(w_l = as.numeric(PF > PA)) %>%
-  group_by(Team) %>%
+  group_by(Team, .drop = FALSE) %>%
   summarise(W = sum(w_l), 
             L = sum(w_l == 0), 
             Pct = as.integer(W / (W + L) * 1000), 
-            PPG = mean(Adj_PF))
+            PPG = mean(Adj_PF)) %>%
+  filter(Team == teamid)
+
 
 BuschBowls <- games_adj %>%
-  filter(Team == teamid) %>%
   filter(Type == "Championship") %>%
   mutate(w_l = as.numeric(PF > PA)) %>%
-  group_by(Team) %>%
+  group_by(Team, .drop = FALSE) %>%
   summarise(W = sum(w_l), 
             L = sum(w_l == 0), 
             Pct = as.integer(W / (W + L) * 1000), 
-            PPG = mean(Adj_PF))
+            PPG = mean(Adj_PF)) %>%
+  filter(Team == teamid)
 
 All_Play <- games_allplay %>%
-  filter(Team == teamid) %>%
   mutate(w_l = as.numeric(PF > PA)) %>%
-  group_by(Team) %>%
+  group_by(Team, .drop = FALSE) %>%
   summarise(APW = sum(APW), 
             APL = sum(APL), 
-            Pct = as.integer(APW / (APW + APL) * 1000))
+            Pct = as.integer(APW / (APW + APL) * 1000)) %>%
+  filter(Team == teamid)
+
 
 Reg_season %>%
   inner_join(Playoffs, by = "Team") %>%
@@ -284,7 +289,7 @@ Reg_season %>%
          BB.Pct = Pct.x.x,
          BB.PPG = PPG,
          "APW%" = Pct.y.y) %>%
-  kable() %>%
+  kable("html", escape = FALSE) %>%
   kable_styling() %>%
   add_header_above(c(" ", "Regular Season" = 4, "Playoffs" = 4, "Busch Bowls" = 4, "All Play" = 3))
 }
@@ -292,43 +297,46 @@ Reg_season %>%
 
 get_12t_stats <- function(teamid) {
   Reg_season <- games_adj %>%
-  filter(Team == teamid) %>%
   filter(Year > 2012) %>%
   filter(Type == "Reg") %>%
   mutate(w_l = as.numeric(PF > PA)) %>%
-  group_by(Team) %>%
+  group_by(Team, .drop = FALSE) %>%
   summarise(W = sum(w_l), 
             L = sum(w_l == 0), 
             Pct = as.integer(W / (W + L) * 1000), 
-            PPG = mean(Adj_PF))
+            PPG = mean(Adj_PF)) %>%
+  filter(Team == teamid)
+
 
 Playoffs <- games_adj %>%
-  filter(Team == teamid) %>%
   filter(Year > 2012) %>%
   filter(Type == "Playoffs") %>%
   mutate(w_l = as.numeric(PF > PA)) %>%
-  group_by(Team) %>%
+  group_by(Team, .drop = FALSE) %>%
   summarise(W = sum(w_l), 
             L = sum(w_l == 0), 
             Pct = as.integer(W / (W + L) * 1000), 
-            PPG = mean(Adj_PF))
+            PPG = mean(Adj_PF)) %>%
+  filter(Team == teamid)
+
 
 BuschBowls <- games_adj %>%
-  filter(Team == teamid) %>%
   filter(Year > 2012) %>%
   filter(Type == "Championship") %>%
   mutate(w_l = as.numeric(PF > PA)) %>%
-  group_by(Team) %>%
+  group_by(Team, .drop = FALSE) %>%
   summarise(W = sum(w_l), 
             L = sum(w_l == 0), 
             Pct = as.integer(W / (W + L) * 1000), 
-            PPG = mean(Adj_PF))
+            PPG = mean(Adj_PF)) %>%
+  filter(Team == teamid)
+
 
 All_Play <- games_allplay %>%
   filter(Team == teamid) %>%
   filter(Year > 2012) %>%
   mutate(w_l = as.numeric(PF > PA)) %>%
-  group_by(Team) %>%
+  group_by(Team, .drop = FALSE) %>%
   summarise(APW = sum(APW), 
             APL = sum(APL), 
             Pct = as.integer(APW / (APW + APL) * 1000))
@@ -350,9 +358,83 @@ Reg_season %>%
          BB.Pct = Pct.x.x,
          BB.PPG = PPG,
          "APW%" = Pct.y.y) %>%
-  kable() %>%
+  kable("html", escape = FALSE) %>%
   kable_styling() %>%
   add_header_above(c(" ", "Regular Season" = 4, "Playoffs" = 4, "Busch Bowls" = 4, "All Play" = 3))
+}
+
+
+get_season_summary <- function(teamid) {
+  Reg_season <- games_adj %>%
+  filter(Type == "Reg") %>%
+  mutate(w_l = as.numeric(PF > PA)) %>%
+  group_by(Year, Team, .drop = FALSE) %>%
+  summarise(W = sum(w_l), 
+            L = sum(w_l == 0), 
+            Pct = as.integer(W / (W + L) * 1000), 
+            PPG = mean(Adj_PF)) %>%
+  filter(Team == teamid)
+
+
+Playoffs <- games_adj %>%
+  filter(Type == "Playoffs") %>%
+  mutate(w_l = as.numeric(PF > PA)) %>%
+  group_by(Year, Team, .drop = FALSE) %>%
+  summarise(W = sum(w_l), 
+            L = sum(w_l == 0), 
+            Pct = as.integer(W / (W + L) * 1000), 
+            PPG = mean(Adj_PF)) %>%
+  filter(Team == teamid)
+
+
+BuschBowls <- games_adj %>%
+  filter(Type == "Championship") %>%
+  mutate(w_l = as.numeric(PF > PA)) %>%
+  group_by(Year, Team, .drop = FALSE) %>%
+  summarise(W = sum(w_l), 
+            L = sum(w_l == 0), 
+            Pct = as.integer(W / (W + L) * 1000), 
+            PPG = mean(Adj_PF)) %>%
+  filter(Team == teamid)
+
+All_Play <- games_allplay %>%
+  mutate(w_l = as.numeric(PF > PA)) %>%
+  group_by(Year, Team, .drop = FALSE) %>%
+  summarise(APW = sum(APW), 
+            APL = sum(APL), 
+            Pct = as.integer(APW / (APW + APL) * 1000)) %>%
+  filter(Team == teamid)
+
+
+Reg_season %>%
+  inner_join(Playoffs, by = c("Year", "Team")) %>%
+  inner_join(BuschBowls, by = c("Year", "Team")) %>%
+  inner_join(All_Play, by = c("Year", "Team")) %>%
+  rename(R.W = W.x,
+         R.L = L.x,
+         "R.%" = Pct.x,
+         R.PPG = PPG.x,
+         PO.W = W.y,
+         PO.L = L.y,
+         "PO.%" = Pct.y,
+         PO.PPG = PPG.y,
+         BB.W = W,
+         BB.L = L,
+         BB.Pct = Pct.x.x,
+         BB.PPG = PPG,
+         "APW%" = Pct.y.y) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed")) %>%
+  add_header_above(c(" " = 2, "Regular Season" = 4, "Playoffs" = 4, "Busch Bowls" = 4, "All Play" = 3))
+}
+
+
+get_game_log <- function(teamid) {
+  games_adj %>%
+  filter(Team == teamid) %>%
+  mutate("W/L" = as.numeric(PF > PA)) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE, position = "left")
 }
 
 ```
@@ -417,6 +499,7 @@ valueBox(winning_seasons, icon = "fa-star-half-alt")
 
 Row
 -------------------------------------
+
 ### All Time Win Percentage
 
 ```{r}
@@ -451,21 +534,41 @@ Row {data-height=30}
 
 Row
 -------------------------------------
+
 ### All Time
 
 ```{r}
 get_alltime_stats(team01)
-
 ```
 
 Row
 -------------------------------------
+
 ### 12 Team Era
 
 ```{r}
 get_12t_stats(team01)
-
 ```
+
+Row
+-------------------------------------
+
+### Season Summary
+
+```{r}
+get_season_summary(team01)
+```
+
+Row
+-------------------------------------
+
+### Game Log
+
+```{r}
+get_game_log(team01)
+```
+
+
 
 `r team02` {data-navmenu="FRANCHISES" data-orientation=rows}
 ===================================== 
@@ -540,7 +643,6 @@ Row
 
 ```{r}
 get_alltime_stats(team02)
-
 ```
 
 Row
@@ -549,8 +651,27 @@ Row
 
 ```{r}
 get_12t_stats(team02)
-
 ```
+
+
+Row
+-------------------------------------
+
+### Season Summary
+
+```{r}
+get_season_summary(team02)
+```
+
+Row
+-------------------------------------
+
+### Game Log
+
+```{r}
+get_game_log(team02)
+```
+
 
 
 `r team03` {data-navmenu="FRANCHISES" data-orientation=rows}
@@ -616,6 +737,47 @@ ppg <- get_12t_ppg(team03)
 gauge(ppg, min = y12t_ppg_min, max = y12t_ppg_max)
 ```
 
+Row {data-height=30}
+-------------------------------------
+*R = Regular Season, PO = Playoffs, BB = Busch Bowl, AP = All Play*
+
+Row
+-------------------------------------
+
+### All Time
+
+```{r}
+get_alltime_stats(team03)
+```
+
+Row
+-------------------------------------
+
+### 12 Team Era
+
+```{r}
+get_12t_stats(team03)
+```
+
+Row
+-------------------------------------
+
+### Season Summary
+
+```{r}
+get_season_summary(team03)
+```
+
+Row
+-------------------------------------
+
+### Game Log
+
+```{r}
+get_game_log(team03)
+```
+
+
 
 `r team04` {data-navmenu="FRANCHISES" data-orientation=rows}
 ===================================== 
@@ -679,6 +841,47 @@ gauge(wpct, min = y12t_wpct_min, max = y12t_wpct_max)
 ppg <- get_12t_ppg(team04)
 gauge(ppg, min = y12t_ppg_min, max = y12t_ppg_max)
 ```
+
+Row {data-height=30}
+-------------------------------------
+*R = Regular Season, PO = Playoffs, BB = Busch Bowl, AP = All Play*
+
+Row
+-------------------------------------
+
+### All Time
+
+```{r}
+get_alltime_stats(team04)
+```
+
+Row
+-------------------------------------
+
+### 12 Team Era
+
+```{r}
+get_12t_stats(team04)
+```
+
+Row
+-------------------------------------
+
+### Season Summary
+
+```{r}
+get_season_summary(team04)
+```
+
+Row
+-------------------------------------
+
+### Game Log
+
+```{r}
+get_game_log(team04)
+```
+
 
 
 `r team05` {data-navmenu="FRANCHISES" data-orientation=rows}
@@ -744,6 +947,47 @@ ppg <- get_12t_ppg(team05)
 gauge(ppg, min = y12t_ppg_min, max = y12t_ppg_max)
 ```
 
+Row {data-height=30}
+-------------------------------------
+*R = Regular Season, PO = Playoffs, BB = Busch Bowl, AP = All Play*
+
+Row
+-------------------------------------
+
+### All Time
+
+```{r}
+get_alltime_stats(team05)
+```
+
+Row
+-------------------------------------
+
+### 12 Team Era
+
+```{r}
+get_12t_stats(team05)
+```
+
+Row
+-------------------------------------
+
+### Season Summary
+
+```{r}
+get_season_summary(team05)
+```
+
+Row
+-------------------------------------
+
+### Game Log
+
+```{r}
+get_game_log(team05)
+```
+
+
 
 `r team06` {data-navmenu="FRANCHISES" data-orientation=rows}
 ===================================== 
@@ -807,6 +1051,47 @@ gauge(wpct, min = y12t_wpct_min, max = y12t_wpct_max)
 ppg <- get_12t_ppg(team06)
 gauge(ppg, min = y12t_ppg_min, max = y12t_ppg_max)
 ```
+
+Row {data-height=30}
+-------------------------------------
+*R = Regular Season, PO = Playoffs, BB = Busch Bowl, AP = All Play*
+
+Row
+-------------------------------------
+
+### All Time
+
+```{r}
+get_alltime_stats(team06)
+```
+
+Row
+-------------------------------------
+
+### 12 Team Era
+
+```{r}
+get_12t_stats(team06)
+```
+
+Row
+-------------------------------------
+
+### Season Summary
+
+```{r}
+get_season_summary(team06)
+```
+
+Row
+-------------------------------------
+
+### Game Log
+
+```{r}
+get_game_log(team06)
+```
+
 
 
 `r team07` {data-navmenu="FRANCHISES" data-orientation=rows}
@@ -872,6 +1157,47 @@ ppg <- get_12t_ppg(team07)
 gauge(ppg, min = y12t_ppg_min, max = y12t_ppg_max)
 ```
 
+Row {data-height=30}
+-------------------------------------
+*R = Regular Season, PO = Playoffs, BB = Busch Bowl, AP = All Play*
+
+Row
+-------------------------------------
+
+### All Time
+
+```{r}
+get_alltime_stats(team07)
+```
+
+Row
+-------------------------------------
+
+### 12 Team Era
+
+```{r}
+get_12t_stats(team07)
+```
+
+Row
+-------------------------------------
+
+### Season Summary
+
+```{r}
+get_season_summary(team07)
+```
+
+Row
+-------------------------------------
+
+### Game Log
+
+```{r}
+get_game_log(team07)
+```
+
+
 
 `r team08` {data-navmenu="FRANCHISES" data-orientation=rows}
 ===================================== 
@@ -935,6 +1261,47 @@ gauge(wpct, min = y12t_wpct_min, max = y12t_wpct_max)
 ppg <- get_12t_ppg(team08)
 gauge(ppg, min = y12t_ppg_min, max = y12t_ppg_max)
 ```
+
+Row {data-height=30}
+-------------------------------------
+*R = Regular Season, PO = Playoffs, BB = Busch Bowl, AP = All Play*
+
+Row
+-------------------------------------
+
+### All Time
+
+```{r}
+get_alltime_stats(team08)
+```
+
+Row
+-------------------------------------
+
+### 12 Team Era
+
+```{r}
+get_12t_stats(team08)
+```
+
+Row
+-------------------------------------
+
+### Season Summary
+
+```{r}
+get_season_summary(team08)
+```
+
+Row
+-------------------------------------
+
+### Game Log
+
+```{r}
+get_game_log(team08)
+```
+
 
 
 `r team09` {data-navmenu="FRANCHISES" data-orientation=rows}
@@ -1000,6 +1367,47 @@ ppg <- get_12t_ppg(team09)
 gauge(ppg, min = y12t_ppg_min, max = y12t_ppg_max)
 ```
 
+Row {data-height=30}
+-------------------------------------
+*R = Regular Season, PO = Playoffs, BB = Busch Bowl, AP = All Play*
+
+Row
+-------------------------------------
+
+### All Time
+
+```{r}
+get_alltime_stats(team09)
+```
+
+Row
+-------------------------------------
+
+### 12 Team Era
+
+```{r}
+get_12t_stats(team09)
+```
+
+Row
+-------------------------------------
+
+### Season Summary
+
+```{r}
+get_season_summary(team09)
+```
+
+Row
+-------------------------------------
+
+### Game Log
+
+```{r}
+get_game_log(team09)
+```
+
+
 
 `r team10` {data-navmenu="FRANCHISES" data-orientation=rows}
 ===================================== 
@@ -1063,6 +1471,47 @@ gauge(wpct, min = y12t_wpct_min, max = y12t_wpct_max)
 ppg <- get_12t_ppg(team10)
 gauge(ppg, min = y12t_ppg_min, max = y12t_ppg_max)
 ```
+
+Row {data-height=30}
+-------------------------------------
+*R = Regular Season, PO = Playoffs, BB = Busch Bowl, AP = All Play*
+
+Row
+-------------------------------------
+
+### All Time
+
+```{r}
+get_alltime_stats(team10)
+```
+
+Row
+-------------------------------------
+
+### 12 Team Era
+
+```{r}
+get_12t_stats(team10)
+```
+
+Row
+-------------------------------------
+
+### Season Summary
+
+```{r}
+get_season_summary(team10)
+```
+
+Row
+-------------------------------------
+
+### Game Log
+
+```{r}
+get_game_log(team10)
+```
+
 
 
 `r team11` {data-navmenu="FRANCHISES" data-orientation=rows}
@@ -1128,6 +1577,47 @@ ppg <- get_12t_ppg(team11)
 gauge(ppg, min = y12t_ppg_min, max = y12t_ppg_max)
 ```
 
+Row {data-height=30}
+-------------------------------------
+*R = Regular Season, PO = Playoffs, BB = Busch Bowl, AP = All Play*
+
+Row
+-------------------------------------
+
+### All Time
+
+```{r}
+get_alltime_stats(team11)
+```
+
+Row
+-------------------------------------
+
+### 12 Team Era
+
+```{r}
+get_12t_stats(team11)
+```
+
+Row
+-------------------------------------
+
+### Season Summary
+
+```{r}
+get_season_summary(team11)
+```
+
+Row
+-------------------------------------
+
+### Game Log
+
+```{r}
+get_game_log(team11)
+```
+
+
 
 `r team12` {data-navmenu="FRANCHISES" data-orientation=rows}
 ===================================== 
@@ -1191,6 +1681,47 @@ gauge(wpct, min = y12t_wpct_min, max = y12t_wpct_max)
 ppg <- get_12t_ppg(team12)
 gauge(ppg, min = y12t_ppg_min, max = y12t_ppg_max)
 ```
+
+Row {data-height=30}
+-------------------------------------
+*R = Regular Season, PO = Playoffs, BB = Busch Bowl, AP = All Play*
+
+Row
+-------------------------------------
+
+### All Time
+
+```{r}
+get_alltime_stats(team12)
+```
+
+Row
+-------------------------------------
+
+### 12 Team Era
+
+```{r}
+get_12t_stats(team12)
+```
+
+Row
+-------------------------------------
+
+### Season Summary
+
+```{r}
+get_season_summary(team12)
+```
+
+Row
+-------------------------------------
+
+### Game Log
+
+```{r}
+get_game_log(team12)
+```
+
 
 
 SEASONS

@@ -241,6 +241,19 @@ y12t_shame_ppg_season <- games_adj %>%
   arrange(PPG)
 
 
-
+get_season_summary <- function(teamid) {
+  games_adj %>%
+    filter(Team == teamid) %>%
+    group_by(Year) %>%
+    mutate(w_l = as.numeric(PF > PA)) %>%
+    summarise(Team = teamid, 
+              W = sum(w_l), 
+              L = sum(w_l == 0), 
+              Pct = as.integer(W / (W + L) * 1000), 
+              Act.PPG = mean(PF),
+              Adj.PPG = mean(Adj_PF)) %>%
+    kable() %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE, position = "left")
+}
 
 
