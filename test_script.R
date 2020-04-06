@@ -38,7 +38,12 @@ games_allplay <- games_raw %>%
 
 this_week <- games_ty[[1, 2]]
 
-ty_ppg <- mean(games_raw$PF)
+ty_ppg <- games_raw %>%
+  group_by(Year) %>%
+  summarise(ppg = mean(PF)) %>%
+  filter(Year == this_year) %>%
+  pull(ppg)
+  
 
 divisions <- data.frame("Team" = c("ADAM HARTMAN", 
                                    "TIM LANG", 
@@ -176,7 +181,7 @@ y12t_apw_season <- games_allplay %>%
 
 games_adj <- games_raw %>%
   group_by(Year) %>%
-  mutate(ppg = mean(PF)) %>%
+  mutate(ppg = (mean(PF))) %>%
   ungroup() %>%
   mutate(Adj_PF = PF / ppg * ty_ppg) %>%
   select(-ppg)
