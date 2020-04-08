@@ -16,6 +16,10 @@ library(tidyverse)
 library(knitr)
 library(kableExtra)
 
+talking_busch <- "https://youtu.be/J0CQxOk39DQ"
+
+talking_busch_list = readHTMLTable(talking_busch, header=T, which=12, stringsAsFactors=F)
+
 ggl_sheet <- "https://docs.google.com/spreadsheets/d/e/2PACX-1vRPAR9n5KuCw3Mw_Ka48khDgK28rrnD4XujJ_tAadcA_kmbYjZF6ZFKX-7WGRHBlY47N8jP6G8JgG1k/pub?gid=0&single=true&output=csv"
 
 games_raw <- read_csv(ggl_sheet)
@@ -57,7 +61,7 @@ games_adj <- games_raw %>%
   group_by(Year) %>%
   mutate(ppg = mean(PF)) %>%
   ungroup() %>%
-  mutate(Adj_PF = PF / ppg * ty_ppg) %>%
+  mutate(Adj_PF = round(PF / ppg * ty_ppg, digits = 2)) %>%
   select(-ppg)
 
 team01 <- "ADAM HARTMAN"
@@ -3601,10 +3605,6 @@ games_adj %>%
   kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE, position = "center") 
 
 ```
-
-
-
-
 
 
 NEWS & TALK
