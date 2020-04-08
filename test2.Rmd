@@ -8,6 +8,9 @@ output:
 ---
 
 ```{r setup, include=FALSE}
+
+# display only seasons played on season summary on franchise page by counting seasons played and displaying by tail
+
 library(flexdashboard)
 library(tidyverse)
 library(knitr)
@@ -18,6 +21,8 @@ ggl_sheet <- "https://docs.google.com/spreadsheets/d/e/2PACX-1vRPAR9n5KuCw3Mw_Ka
 games_raw <- read_csv(ggl_sheet)
 
 games_raw$Team <- toupper(games_raw$Team)
+
+games_raw$Opponent <- toupper(games_raw$Opponent)
 
 games_raw <- games_raw %>%
   mutate_all(~replace(., is.na(.), 0))
@@ -689,8 +694,17 @@ get_powerrk <- function(yearid) {
 HOME
 =====================================
 
+Column
+-------------------------------------
+
 ### Rankings
-Test
+
+```{r}
+get_powerrk(this_year)
+```
+
+Column
+-------------------------------------
 
 ### What's Happening?
 Test
@@ -2466,6 +2480,26 @@ get_powerrk(2019)
 get_standings(2019)
 ```
 
+BUSCH BOWL HISTORY {data-navmenu="RECORDS" data-orientation=rows}
+===================================== 
+
+Row
+-------------------------------------
+
+### BUSCH BOWL HISTORY
+
+``` {r}
+games_raw %>%
+  mutate(w_l = as.numeric(as.logical(PF > PA)),
+         BUSCH.BOWL = as.roman(Year - 2002)) %>%
+  filter(Type == "Championship") %>%
+  filter(w_l == 1) %>%
+  arrange(desc(Year)) %>%
+  select(BUSCH.BOWL, CHAMPION = Team, CH.SCORE = PF, RUNNER.UP = Opponent, RU.SCORE = PA) %>%
+    kable() %>%
+    kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE, position = "center")
+```
+
 
 ALL TIME {data-navmenu="RECORDS" data-orientation=rows}
 ===================================== 
@@ -2488,8 +2522,8 @@ at_wins <- games_raw %>%
             n = sum(w_l), 
             Loss = sum(w_l == 0), 
             Pct = as.integer(n / (n + Loss) * 1000)) %>%
-  arrange(desc(n)) %>%
-  head(1) %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
   select(Record, n, Team)
 
 at_w_pct <- games_raw %>%
@@ -2502,8 +2536,8 @@ at_w_pct <- games_raw %>%
             Win = sum(w_l), 
             Loss = sum(w_l == 0), 
             n = as.integer(Win / (Win + Loss) * 1000)) %>%
-  arrange(desc(n)) %>%
-  head(1) %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
   select(Record, n, Team)
 
 at_po_appear <- games_raw %>%
@@ -2513,8 +2547,8 @@ at_po_appear <- games_raw %>%
   count(Team) %>%
   filter(n > 1) %>%
   mutate(Record = "Playoff Appearances") %>%
-  arrange(desc(n)) %>%
-  head(1) %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
   select(Record, n, Team)
 
 at_playoff_w <- games_raw %>%
@@ -2528,8 +2562,8 @@ at_playoff_w <- games_raw %>%
             n = sum(w_l), 
             Loss = sum(w_l == 0), 
             Pct = as.integer(n / (n + Loss) * 1000)) %>%
-  arrange(desc(n)) %>%
-  head(1) %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
   select(Record, n, Team)  
 
 at_bb_appear <- games_raw %>%
@@ -2539,8 +2573,8 @@ at_bb_appear <- games_raw %>%
   count(Team) %>%
   filter(n > 1) %>%
   mutate(Record = "Busch Bowl Appearances") %>%
-  arrange(desc(n)) %>%
-  head(1) %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
   select(Record, n, Team)
 
 at_bb_w <- games_raw %>%
@@ -2554,8 +2588,8 @@ at_bb_w <- games_raw %>%
             n = sum(w_l), 
             Loss = sum(w_l == 0), 
             Pct = as.integer(n / (n + Loss) * 1000)) %>%
-  arrange(desc(n)) %>%
-  head(1) %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
   select(Record, n, Team) 
 
 at_apw <- games_allplay %>%
@@ -2565,8 +2599,8 @@ at_apw <- games_allplay %>%
             n = as.integer(sum(APW)), 
             APL = as.integer(sum(APL))) %>%
   mutate(Pct = as.integer(n / (n + APL) * 1000)) %>%
-  arrange(desc(n)) %>%
-  head(1) %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
   select(Record, n, Team)
 
 at_apw_pct <- games_allplay %>%
@@ -2577,8 +2611,8 @@ at_apw_pct <- games_allplay %>%
             APL = as.integer(sum(APL))) %>%
   filter(APW > 150) %>%
   mutate(n = as.integer(APW / (APW + APL) * 1000)) %>%
-  arrange(desc(n)) %>%
-  head(1) %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
   select(Record, n, Team)
 
 at_ppg <- games_adj %>%
@@ -2588,8 +2622,8 @@ at_ppg <- games_adj %>%
   group_by(Team) %>%
   summarise(Record = "PPG", 
             n = as.integer(mean(Adj_PF))) %>%
-  arrange(desc(n)) %>%
-  head(1) %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
   select(Record, n, Team)
 
 rbind(at_wins, at_w_pct, at_po_appear, at_playoff_w, at_bb_appear, at_bb_w, at_apw, at_apw_pct, at_ppg) %>%
@@ -2610,8 +2644,9 @@ at_season_w_pct <- games_raw %>%
             Win = sum(w_l), 
             Loss = sum(w_l == 0), 
             n = as.integer(Win / (Win + Loss) * 1000)) %>%
-  arrange(desc(n)) %>%
-  head(1) %>%
+  ungroup() %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
   select(Record, n, Team, Year)
 
 at_season_apw_pct <- games_allplay %>%
@@ -2622,8 +2657,9 @@ at_season_apw_pct <- games_allplay %>%
             APW = as.integer(sum(APW)), 
             APL = as.integer(sum(APL))) %>%
   mutate(n = as.integer(APW / (APW + APL) * 1000)) %>%
-  arrange(desc(n)) %>%
-  head(1) %>%
+  ungroup() %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
   select(Record, n, Team, Year)
 
 at_season_ppg <- games_adj %>%
@@ -2631,8 +2667,9 @@ at_season_ppg <- games_adj %>%
   filter(n() > 2) %>%
   summarise(Record = "PPG", 
             n = as.integer(mean(Adj_PF))) %>%
-  arrange(desc(n)) %>%
-  head(1) %>%
+  ungroup() %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
   select(Record, n, Team, Year)
 
 at_season_apw_low_pct <- games_allplay %>%
@@ -2643,8 +2680,9 @@ at_season_apw_low_pct <- games_allplay %>%
             APW = as.integer(sum(APW)), 
             APL = as.integer(sum(APL))) %>%
   mutate(n = as.integer(APW / (APW + APL) * 1000)) %>%
-  arrange(n) %>%
-  head(1) %>%
+  ungroup() %>%
+  mutate(grp = dense_rank(n)) %>%
+  filter(grp == 1) %>%
   select(Record, n, Team, Year)
 
 at_season_low_ppg <- games_adj %>%
@@ -2652,8 +2690,9 @@ at_season_low_ppg <- games_adj %>%
   filter(n() > 2) %>%
   summarise(Record = "Lowest PPG", 
             n = as.integer(mean(Adj_PF))) %>%
-  arrange(n) %>%
-  head(1) %>%
+  ungroup() %>%
+  mutate(grp = dense_rank(n)) %>%
+  filter(grp == 1) %>%
   select(Record, n, Team, Year)
 
 rbind(at_season_w_pct, at_season_apw_pct, at_season_ppg,at_season_apw_low_pct, at_season_low_ppg) %>%
@@ -2669,14 +2708,16 @@ at_game_pts <- games_adj %>%
   mutate(Record = "Points") %>%
   arrange(desc(as.integer(Adj_PF))) %>%
   rename(n = Adj_PF) %>%
-  head(1) %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
   select(Record, n, Team, Year, Week)
 
 at_game_low_pts <- games_adj %>%
   mutate(Record = "Fewest Points") %>%
   arrange(Adj_PF) %>%
   rename(n = Adj_PF) %>%
-  head(1) %>%
+  mutate(grp = dense_rank(n)) %>%
+  filter(grp == 1) %>%
   select(Record, n, Team, Year, Week)
 
 rbind(at_game_pts, at_game_low_pts) %>%
@@ -3019,8 +3060,8 @@ at_wins <- games_raw %>%
             n = sum(w_l), 
             Loss = sum(w_l == 0), 
             Pct = as.integer(n / (n + Loss) * 1000)) %>%
-  arrange(desc(n)) %>%
-  head(1) %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
   select(Record, n, Team)
 
 at_w_pct <- games_raw %>%
@@ -3034,8 +3075,8 @@ at_w_pct <- games_raw %>%
             Win = sum(w_l), 
             Loss = sum(w_l == 0), 
             n = as.integer(Win / (Win + Loss) * 1000)) %>%
-  arrange(desc(n)) %>%
-  head(1) %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
   select(Record, n, Team)
 
 at_po_appear <- games_raw %>%
@@ -3046,8 +3087,8 @@ at_po_appear <- games_raw %>%
   count(Team) %>%
   filter(n > 1) %>%
   mutate(Record = "Playoff Appearances") %>%
-  arrange(desc(n)) %>%
-  head(1) %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
   select(Record, n, Team)
 
 at_playoff_w <- games_raw %>%
@@ -3062,8 +3103,8 @@ at_playoff_w <- games_raw %>%
             n = sum(w_l), 
             Loss = sum(w_l == 0), 
             Pct = as.integer(n / (n + Loss) * 1000)) %>%
-  arrange(desc(n)) %>%
-  head(1) %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
   select(Record, n, Team)  
 
 at_bb_appear <- games_raw %>%
@@ -3074,8 +3115,8 @@ at_bb_appear <- games_raw %>%
   count(Team) %>%
   filter(n > 1) %>%
   mutate(Record = "Busch Bowl Appearances") %>%
-  arrange(desc(n)) %>%
-  head(1) %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
   select(Record, n, Team)
 
 at_bb_w <- games_raw %>%
@@ -3090,8 +3131,8 @@ at_bb_w <- games_raw %>%
             n = sum(w_l), 
             Loss = sum(w_l == 0), 
             Pct = as.integer(n / (n + Loss) * 1000)) %>%
-  arrange(desc(n)) %>%
-  head(1) %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
   select(Record, n, Team) 
 
 at_apw <- games_allplay %>%
@@ -3102,8 +3143,8 @@ at_apw <- games_allplay %>%
             n = as.integer(sum(APW)), 
             APL = as.integer(sum(APL))) %>%
   mutate(Pct = as.integer(n / (n + APL) * 1000)) %>%
-  arrange(desc(n)) %>%
-  head(1) %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
   select(Record, n, Team)
 
 at_apw_pct <- games_allplay %>%
@@ -3115,8 +3156,8 @@ at_apw_pct <- games_allplay %>%
             APL = as.integer(sum(APL))) %>%
   filter(APW > 150) %>%
   mutate(n = as.integer(APW / (APW + APL) * 1000)) %>%
-  arrange(desc(n)) %>%
-  head(1) %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
   select(Record, n, Team)
 
 at_ppg <- games_adj %>%
@@ -3127,8 +3168,8 @@ at_ppg <- games_adj %>%
   group_by(Team) %>%
   summarise(Record = "PPG", 
             n = as.integer(mean(Adj_PF))) %>%
-  arrange(desc(n)) %>%
-  head(1) %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
   select(Record, n, Team)
 
 rbind(at_wins, at_w_pct, at_po_appear, at_playoff_w, at_bb_appear, at_bb_w, at_apw, at_apw_pct, at_ppg) %>%
@@ -3148,8 +3189,9 @@ at_season_w_pct <- games_raw %>%
             Win = sum(w_l), 
             Loss = sum(w_l == 0), 
             n = as.integer(Win / (Win + Loss) * 1000)) %>%
-  arrange(desc(n)) %>%
-  head(1) %>%
+  ungroup() %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
   select(Record, n, Team, Year)
 
 at_season_apw_pct <- games_allplay %>%
@@ -3161,8 +3203,9 @@ at_season_apw_pct <- games_allplay %>%
             APW = as.integer(sum(APW)), 
             APL = as.integer(sum(APL))) %>%
   mutate(n = as.integer(APW / (APW + APL) * 1000)) %>%
-  arrange(desc(n)) %>%
-  head(1) %>%
+  ungroup() %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
   select(Record, n, Team, Year)
 
 at_season_ppg <- games_adj %>%
@@ -3171,8 +3214,9 @@ at_season_ppg <- games_adj %>%
   filter(n() > 2) %>%
   summarise(Record = "PPG", 
             n = as.integer(mean(Adj_PF))) %>%
-  arrange(desc(n)) %>%
-  head(1) %>%
+  ungroup() %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
   select(Record, n, Team, Year)
 
 at_season_apw_low_pct <- games_allplay %>%
@@ -3184,8 +3228,9 @@ at_season_apw_low_pct <- games_allplay %>%
             APW = as.integer(sum(APW)), 
             APL = as.integer(sum(APL))) %>%
   mutate(n = as.integer(APW / (APW + APL) * 1000)) %>%
-  arrange(n) %>%
-  head(1) %>%
+  ungroup() %>%
+  mutate(grp = dense_rank(n)) %>%
+  filter(grp == 1) %>%
   select(Record, n, Team, Year)
 
 at_season_low_ppg <- games_adj %>%
@@ -3194,8 +3239,9 @@ at_season_low_ppg <- games_adj %>%
   filter(n() > 2) %>%
   summarise(Record = "Lowest PPG", 
             n = as.integer(mean(Adj_PF))) %>%
-  arrange(n) %>%
-  head(1) %>%
+  ungroup() %>%
+  mutate(grp = dense_rank(n)) %>%
+  filter(grp == 1) %>%
   select(Record, n, Team, Year)
 
 rbind(at_season_w_pct, at_season_apw_pct, at_season_ppg,at_season_apw_low_pct, at_season_low_ppg) %>%
@@ -3212,7 +3258,8 @@ at_game_pts <- games_adj %>%
   mutate(Record = "Points") %>%
   arrange(desc(as.integer(Adj_PF))) %>%
   rename(n = Adj_PF) %>%
-  head(1) %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
   select(Record, n, Team, Year, Week)
 
 at_game_low_pts <- games_adj %>%
@@ -3220,7 +3267,8 @@ at_game_low_pts <- games_adj %>%
   mutate(Record = "Fewest Points") %>%
   arrange(Adj_PF) %>%
   rename(n = Adj_PF) %>%
-  head(1) %>%
+  mutate(grp = dense_rank(n)) %>%
+  filter(grp == 1) %>%
   select(Record, n, Team, Year, Week)
 
 rbind(at_game_pts, at_game_low_pts) %>%
