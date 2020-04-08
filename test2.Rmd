@@ -18,8 +18,6 @@ library(kableExtra)
 
 talking_busch <- "https://youtu.be/J0CQxOk39DQ"
 
-talking_busch_list = readHTMLTable(talking_busch, header=T, which=12, stringsAsFactors=F)
-
 ggl_sheet <- "https://docs.google.com/spreadsheets/d/e/2PACX-1vRPAR9n5KuCw3Mw_Ka48khDgK28rrnD4XujJ_tAadcA_kmbYjZF6ZFKX-7WGRHBlY47N8jP6G8JgG1k/pub?gid=0&single=true&output=csv"
 
 games_raw <- read_csv(ggl_sheet)
@@ -142,7 +140,7 @@ at_ppg_max <- games_adj %>%
   filter(n() > 23) %>%
   ungroup() %>%
   group_by(Team) %>%
-  summarise(PPG = mean(Adj_PF)) %>%
+  summarise(PPG = round(mean(Adj_PF), digits = 2)) %>%
   arrange(desc(PPG)) %>%
   head(1) %>%
   pull(PPG) %>%
@@ -153,7 +151,7 @@ at_ppg_min <- games_adj %>%
   filter(n() > 23) %>%
   ungroup() %>%
   group_by(Team) %>%
-  summarise(PPG = mean(Adj_PF)) %>%
+  summarise(PPG = round(mean(Adj_PF), digits = 2)) %>%
   arrange(PPG) %>%
   head(1) %>%
   pull(PPG) %>%
@@ -191,7 +189,7 @@ y12t_ppg_max <- games_adj %>%
   ungroup() %>%
   filter(Year > 2012) %>%
   group_by(Team) %>%
-  summarise(PPG = mean(Adj_PF)) %>%
+  summarise(PPG = round(mean(Adj_PF), digits = 2)) %>%
   arrange(desc(PPG)) %>%
   head(1) %>%
   pull(PPG) %>%
@@ -203,7 +201,7 @@ y12t_ppg_min <- games_adj %>%
   ungroup() %>%
   filter(Year > 2012) %>%
   group_by(Team) %>%
-  summarise(PPG = mean(Adj_PF)) %>%
+  summarise(PPG = round(mean(Adj_PF), digits = 2)) %>%
   arrange(PPG) %>%
   head(1) %>%
   pull(PPG) %>%
@@ -220,7 +218,7 @@ get_at_wpct <- function(teamid) {
 get_at_ppg <- function(teamid) {
   games_adj %>%
   filter(Team == teamid) %>%
-  summarise(PPG = mean(Adj_PF)) %>%
+  summarise(PPG = round(mean(Adj_PF), digits = 2)) %>%
   pull(PPG) %>%
   as.integer()
 }
@@ -238,7 +236,7 @@ get_12t_ppg <- function(teamid) {
   games_adj %>%
   filter(Team == teamid) %>%
   filter(Year > 2012) %>%
-  summarise(PPG = mean(Adj_PF)) %>%
+  summarise(PPG = round(mean(Adj_PF), digits = 2)) %>%
   pull(PPG) %>%
   as.integer()
 }
@@ -251,7 +249,7 @@ get_alltime_stats <- function(teamid) {
   summarise(W = sum(w_l), 
             L = sum(w_l == 0), 
             Pct = as.integer(W / (W + L) * 1000), 
-            PPG = mean(Adj_PF)) %>%
+            PPG = round(mean(Adj_PF), digits = 2)) %>%
   filter(Team == teamid)
 
 
@@ -262,7 +260,7 @@ Playoffs <- games_adj %>%
   summarise(W = sum(w_l), 
             L = sum(w_l == 0), 
             Pct = as.integer(W / (W + L) * 1000), 
-            PPG = mean(Adj_PF)) %>%
+            PPG = round(mean(Adj_PF), digits = 2)) %>%
   filter(Team == teamid)
 
 
@@ -273,7 +271,7 @@ BuschBowls <- games_adj %>%
   summarise(W = sum(w_l), 
             L = sum(w_l == 0), 
             Pct = as.integer(W / (W + L) * 1000), 
-            PPG = mean(Adj_PF)) %>%
+            PPG = round(mean(Adj_PF), digits = 2)) %>%
   filter(Team == teamid)
 
 All_Play <- games_allplay %>%
@@ -317,7 +315,7 @@ get_12t_stats <- function(teamid) {
   summarise(W = sum(w_l), 
             L = sum(w_l == 0), 
             Pct = as.integer(W / (W + L) * 1000), 
-            PPG = mean(Adj_PF)) %>%
+            PPG = round(mean(Adj_PF), digits = 2)) %>%
   filter(Team == teamid)
 
 
@@ -329,7 +327,7 @@ Playoffs <- games_adj %>%
   summarise(W = sum(w_l), 
             L = sum(w_l == 0), 
             Pct = as.integer(W / (W + L) * 1000), 
-            PPG = mean(Adj_PF)) %>%
+            PPG = round(mean(Adj_PF), digits = 2)) %>%
   filter(Team == teamid)
 
 
@@ -341,7 +339,7 @@ BuschBowls <- games_adj %>%
   summarise(W = sum(w_l), 
             L = sum(w_l == 0), 
             Pct = as.integer(W / (W + L) * 1000), 
-            PPG = mean(Adj_PF)) %>%
+            PPG = round(mean(Adj_PF), digits = 2)) %>%
   filter(Team == teamid)
 
 
@@ -385,7 +383,7 @@ get_season_summary <- function(teamid) {
   summarise(W = sum(w_l), 
             L = sum(w_l == 0), 
             Pct = as.integer(W / (W + L) * 1000), 
-            PPG = mean(Adj_PF)) %>%
+            PPG = round(mean(Adj_PF), digits = 2)) %>%
   filter(Team == teamid)
 
 
@@ -396,7 +394,7 @@ Playoffs <- games_adj %>%
   summarise(W = sum(w_l), 
             L = sum(w_l == 0), 
             Pct = as.integer(W / (W + L) * 1000), 
-            PPG = mean(Adj_PF)) %>%
+            PPG = round(mean(Adj_PF), digits = 2)) %>%
   filter(Team == teamid)
 
 
@@ -407,7 +405,7 @@ BuschBowls <- games_adj %>%
   summarise(W = sum(w_l), 
             L = sum(w_l == 0), 
             Pct = as.integer(W / (W + L) * 1000), 
-            PPG = mean(Adj_PF)) %>%
+            PPG = round(mean(Adj_PF), digits = 2)) %>%
   filter(Team == teamid)
 
 All_Play <- games_allplay %>%
