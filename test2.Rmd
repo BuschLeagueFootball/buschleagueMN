@@ -9,16 +9,50 @@ output:
 
 ```{r setup, include=FALSE}
 
-# display only seasons played on season summary on franchise page by counting seasons played and displaying by tail
-
 library(flexdashboard)
 library(tidyverse)
 library(knitr)
 library(kableExtra)
 
+#
+#
+# SOURCE DATA
+#
+#
+
 talking_busch <- "https://youtu.be/J0CQxOk39DQ"
 
 ggl_sheet <- "https://docs.google.com/spreadsheets/d/e/2PACX-1vRPAR9n5KuCw3Mw_Ka48khDgK28rrnD4XujJ_tAadcA_kmbYjZF6ZFKX-7WGRHBlY47N8jP6G8JgG1k/pub?gid=0&single=true&output=csv"
+
+ggl_sheet_draft <- "https://docs.google.com/spreadsheets/d/e/2PACX-1vT7vcwUpOdVzcH6rRwaZWF-Z7mfmCF9rjkBoYNmj56kbho4FI9SB5hBUlGZcrQOdaHwLqIoo1sTYEr0/pub?gid=0&single=true&output=csv"
+
+#
+#
+# DRAFT CLEANING
+#
+#
+
+draft <- read_csv(ggl_sheet_draft)
+
+draft$Player <- toupper(draft$Player)
+
+draft$Franchise <- toupper(draft$Franchise)
+
+#
+#
+# PLAYER DATA CLEANING
+#
+#
+
+playerdata <- read_csv("FantasyFootballData.csv")
+
+playerdata$Player <- toupper(playerdata$Player)
+
+#
+#
+# GAMES CLEANING
+#
+#
 
 games_raw <- read_csv(ggl_sheet)
 
@@ -32,6 +66,443 @@ games_raw <- games_raw %>%
 games_raw$Team <- as.factor(games_raw$Team)
 
 write_csv(games_raw, "gamessource.csv")
+
+#
+#
+# TEAM ASSIGNMENTS, LINKING, CLEANING
+#
+#
+
+team01 <- "ADAM HARTMAN"
+team02 <- "DAVID PIKUS"
+team03 <- "DERRIK HARTMAN"
+team04 <- "DREW VOGT"
+team05 <- "JOHN THOMPSON"
+team06 <- "MATT TRAEN"
+team07 <- "MAX APONTE"
+team08 <- "PHIL BASTRON"
+team09 <- "TIM GREVE"
+team10 <- "TIM LANG"
+team11 <- "TODD TRAEN"
+team12 <- "TREVOR SOUPIR"
+
+#
+#
+# CUSTOM FUNCTIONS
+#
+#
+
+get_founded <- function(teamid) {
+  games_raw %>% 
+    filter(Team == teamid) %>% 
+    filter(Year == min(Year)) %>% 
+    filter(Week == 1) %>% 
+    pull(Year)
+}
+
+get_buschbowls <- function(teamid) {
+  games_raw %>% 
+    filter(Team == teamid) %>% 
+    filter(Type == "Championship") %>% 
+    mutate(w_l = as.numeric(as.logical(PF > PA))) %>%
+    summarise(champs = sum(w_l)) %>%
+    pull(champs)
+}
+
+get_po_appear <- function(teamid) {
+  games_raw %>% 
+    filter(Team == teamid) %>% 
+    filter(Type == "Playoffs") %>%
+    group_by(Year) %>%
+    summarize(mean(PF)) %>%
+    nrow()
+}
+
+get_winning_seasons <- function(teamid) {
+  games_raw %>% 
+    filter(Team == teamid) %>% 
+    mutate(w_l = as.numeric(as.logical(PF > PA))) %>%
+    group_by(Year) %>%
+    summarise(Win = sum(w_l), Loss = sum(w_l == 0), 
+            Pct = as.double(Win / (Win + Loss))) %>%
+    mutate(over500 = as.numeric(as.logical(Pct > .5))) %>%
+    summarise(winning_seasons = sum(over500)) %>%
+    pull(winning_seasons)
+}
+
+get_at_wpct <- function(teamid) {
+  games_raw %>%
+    filter(Team == teamid) %>%
+    mutate(w_l = as.numeric(as.logical(PF > PA))) %>%
+    summarise(Win = sum(w_l), Loss = sum(w_l == 0), Pct = as.integer(Win / (Win + Loss) * 1000)) %>%
+    pull(Pct)
+}
+
+get_at_ppg <- function(teamid) {
+  games_adj %>%
+    filter(Team == teamid) %>%
+    summarise(PPG = round(mean(Adj_PF), digits = 2)) %>%
+    pull(PPG) %>%
+    as.integer()
+}
+
+get_12t_wpct <- function(teamid) {
+  games_raw %>%
+    filter(Team == teamid) %>%
+    filter(Year > 2012) %>%
+    mutate(w_l = as.numeric(as.logical(PF > PA))) %>%
+    summarise(Win = sum(w_l), Loss = sum(w_l == 0), Pct = as.integer(Win / (Win + Loss) * 1000)) %>%
+    pull(Pct)
+}
+
+get_12t_ppg <- function(teamid) {
+  games_adj %>%
+    filter(Team == teamid) %>%
+    filter(Year > 2012) %>%
+    summarise(PPG = round(mean(Adj_PF), digits = 2)) %>%
+    pull(PPG) %>%
+    as.integer()
+}
+
+get_alltime_stats <- function(teamid) {
+  Reg_season <- games_adj %>%
+    filter(Type == "Reg") %>%
+    mutate(w_l = as.numeric(PF > PA)) %>%
+    group_by(Team, .drop = FALSE) %>%
+    summarise(W = sum(w_l), 
+            L = sum(w_l == 0), 
+            Pct = as.integer(W / (W + L) * 1000), 
+            PPG = round(mean(Adj_PF), digits = 2)) %>%
+    filter(Team == teamid)
+
+
+  Playoffs <- games_adj %>%
+    filter(Type != "Reg") %>%
+    mutate(w_l = as.numeric(PF > PA)) %>%
+    group_by(Team, .drop = FALSE) %>%
+    summarise(W = sum(w_l), 
+            L = sum(w_l == 0), 
+            Pct = as.integer(W / (W + L) * 1000), 
+            PPG = round(mean(Adj_PF), digits = 2)) %>%
+    filter(Team == teamid)
+
+  BuschBowls <- games_adj %>%
+    filter(Type == "Championship") %>%
+    mutate(w_l = as.numeric(PF > PA)) %>%
+    group_by(Team, .drop = FALSE) %>%
+    summarise(W = sum(w_l), 
+            L = sum(w_l == 0), 
+            Pct = as.integer(W / (W + L) * 1000), 
+            PPG = round(mean(Adj_PF), digits = 2)) %>%
+    filter(Team == teamid)
+
+  All_Play <- games_allplay %>%
+    mutate(w_l = as.numeric(PF > PA)) %>%
+    group_by(Team, .drop = FALSE) %>%
+    summarise(APW = sum(APW), 
+            APL = sum(APL), 
+            Pct = as.integer(APW / (APW + APL) * 1000)) %>%
+    filter(Team == teamid)
+
+  Reg_season %>%
+    inner_join(Playoffs, by = "Team") %>%
+    inner_join(BuschBowls, by = "Team") %>%
+    inner_join(All_Play, by = "Team") %>%
+    rename(R.W = W.x,
+         R.L = L.x,
+         "R.%" = Pct.x,
+         R.PPG = PPG.x,
+         PO.W = W.y,
+         PO.L = L.y,
+         "PO.%" = Pct.y,
+         PO.PPG = PPG.y,
+         BB.W = W,
+         BB.L = L,
+         BB.Pct = Pct.x.x,
+         BB.PPG = PPG,
+         "APW%" = Pct.y.y) %>%
+    kable() %>%
+    kable_styling() %>%
+    add_header_above(c(" ", "Regular Season" = 4, "Playoffs" = 4, "Busch Bowls" = 4, "All Play" = 3))
+}
+
+get_12t_stats <- function(teamid) {
+  Reg_season <- games_adj %>%
+    filter(Year > 2012) %>%
+    filter(Type == "Reg") %>%
+    mutate(w_l = as.numeric(PF > PA)) %>%
+    group_by(Team, .drop = FALSE) %>%
+    summarise(W = sum(w_l), 
+            L = sum(w_l == 0), 
+            Pct = as.integer(W / (W + L) * 1000), 
+            PPG = round(mean(Adj_PF), digits = 2)) %>%
+    filter(Team == teamid)
+
+  Playoffs <- games_adj %>%
+    filter(Year > 2012) %>%
+    filter(Type != "Reg") %>%
+    mutate(w_l = as.numeric(PF > PA)) %>%
+    group_by(Team, .drop = FALSE) %>%
+    summarise(W = sum(w_l), 
+            L = sum(w_l == 0), 
+            Pct = as.integer(W / (W + L) * 1000), 
+            PPG = round(mean(Adj_PF), digits = 2)) %>%
+    filter(Team == teamid)
+
+  BuschBowls <- games_adj %>%
+    filter(Year > 2012) %>%
+    filter(Type == "Championship") %>%
+    mutate(w_l = as.numeric(PF > PA)) %>%
+    group_by(Team, .drop = FALSE) %>%
+    summarise(W = sum(w_l), 
+            L = sum(w_l == 0), 
+            Pct = as.integer(W / (W + L) * 1000), 
+            PPG = round(mean(Adj_PF), digits = 2)) %>%
+    filter(Team == teamid)
+
+  All_Play <- games_allplay %>%
+    filter(Team == teamid) %>%
+    filter(Year > 2012) %>%
+    mutate(w_l = as.numeric(PF > PA)) %>%
+    group_by(Team, .drop = FALSE) %>%
+    summarise(APW = sum(APW), 
+            APL = sum(APL), 
+            Pct = as.integer(APW / (APW + APL) * 1000))
+
+  Reg_season %>%
+    inner_join(Playoffs, by = "Team") %>%
+    inner_join(BuschBowls, by = "Team") %>%
+    inner_join(All_Play, by = "Team") %>%
+    rename(R.W = W.x,
+         R.L = L.x,
+         "R.%" = Pct.x,
+         R.PPG = PPG.x,
+         PO.W = W.y,
+         PO.L = L.y,
+         "PO.%" = Pct.y,
+         PO.PPG = PPG.y,
+         BB.W = W,
+         BB.L = L,
+         BB.Pct = Pct.x.x,
+         BB.PPG = PPG,
+         "APW%" = Pct.y.y) %>%
+    kable() %>%
+    kable_styling() %>%
+    add_header_above(c(" ", "Regular Season" = 4, "Playoffs" = 4, "Busch Bowls" = 4, "All Play" = 3))
+}
+
+get_season_summary <- function(teamid) {
+  Reg_season <- games_adj %>%
+    filter(Type == "Reg") %>%
+    mutate(w_l = as.numeric(PF > PA)) %>%
+    group_by(Year, Team, .drop = FALSE) %>%
+    summarise(W = sum(w_l), 
+            L = sum(w_l == 0), 
+            Pct = as.integer(W / (W + L) * 1000), 
+            PPG = round(mean(Adj_PF), digits = 2)) %>%
+    filter(Team == teamid)
+
+  Playoffs <- games_adj %>%
+    filter(Type != "Reg") %>%
+    mutate(w_l = as.numeric(PF > PA)) %>%
+    group_by(Year, Team, .drop = FALSE) %>%
+    summarise(W = sum(w_l), 
+            L = sum(w_l == 0), 
+            Pct = as.integer(W / (W + L) * 1000), 
+            PPG = round(mean(Adj_PF), digits = 2)) %>%
+    filter(Team == teamid)
+
+  BuschBowls <- games_adj %>%
+    filter(Type == "Championship") %>%
+    mutate(w_l = as.numeric(PF > PA)) %>%
+    group_by(Year, Team, .drop = FALSE) %>%
+    summarise(W = sum(w_l), 
+            L = sum(w_l == 0), 
+            Pct = as.integer(W / (W + L) * 1000), 
+            PPG = round(mean(Adj_PF), digits = 2)) %>%
+    filter(Team == teamid)
+
+  All_Play <- games_allplay %>%
+    mutate(w_l = as.numeric(PF > PA)) %>%
+    group_by(Year, Team, .drop = FALSE) %>%
+    summarise(APW = sum(APW), 
+            APL = sum(APL), 
+            Pct = as.integer(APW / (APW + APL) * 1000)) %>%
+    filter(Team == teamid)
+
+  Reg_season %>%
+    inner_join(Playoffs, by = c("Year", "Team")) %>%
+    inner_join(BuschBowls, by = c("Year", "Team")) %>%
+    inner_join(All_Play, by = c("Year", "Team")) %>%
+    rename(R.W = W.x,
+         R.L = L.x,
+         "R.%" = Pct.x,
+         R.PPG = PPG.x,
+         PO.W = W.y,
+         PO.L = L.y,
+         "PO.%" = Pct.y,
+         PO.PPG = PPG.y,
+         BB.W = W,
+         BB.L = L,
+         BB.Pct = Pct.x.x,
+         BB.PPG = PPG,
+         "APW%" = Pct.y.y) %>%
+    filter(Year > get_founded(teamid) - 1) %>%
+    kable() %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed")) %>%
+    add_header_above(c(" " = 2, "Regular Season" = 4, "Playoffs" = 4, "Busch Bowls" = 4, "All Play" = 3))
+}
+
+get_game_log <- function(teamid) {
+  games_adj %>%
+    filter(Team == teamid) %>%
+    mutate("W/L" = as.numeric(PF > PA)) %>%
+    kable() %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE, position = "left")
+}
+
+get_champion <- function(yearid) {
+  games_raw %>%
+    filter(Type == "Championship") %>%
+    mutate(w_l = as.numeric(PF > PA)) %>%
+    filter(w_l == 1) %>%
+    filter(Year == yearid) %>%
+    pull(Team)
+}
+
+get_runnerup <- function(yearid) {
+  games_raw %>%
+    filter(Type == "Championship") %>%
+    mutate(w_l = as.numeric(PF > PA)) %>%
+    filter(w_l == 0) %>%
+    filter(Year == yearid) %>%
+    pull(Team)
+}
+
+get_mostptsteam <- function(yearid) {
+  games_raw %>%
+    filter(Type == "Reg") %>%
+    group_by(Team, Year) %>%
+    summarise(tpts = sum(PF)) %>%
+    filter(Year == yearid) %>%
+    arrange(desc(tpts)) %>%
+    head(1) %>%
+    pull(Team)
+}
+
+get_mostptspts <- function(yearid) {
+  games_raw %>%
+    filter(Type == "Reg") %>%
+    group_by(Team, Year) %>%
+    summarise(tpts = sum(PF)) %>%
+    filter(Year == yearid) %>%
+    arrange(desc(tpts)) %>%
+    head(1) %>%
+    pull(tpts)
+}
+
+get_allplaypctteam <- function(yearid) {
+  games_allplay %>%
+    filter(Year == yearid) %>%
+    filter(Type == "Reg") %>%
+    group_by(Team) %>%
+    summarise(APW = as.integer(sum(APW)), APL = as.integer(sum(APL))) %>%
+    mutate(Pct = as.integer(APW / (APW + APL) * 1000)) %>%
+    arrange(desc(Pct)) %>%
+    head(1) %>%
+    pull(Team)
+}
+
+get_allplaypctpct <- function(yearid) {
+  games_allplay %>%
+    filter(Year == yearid) %>%
+    filter(Type == "Reg") %>%
+    group_by(Team) %>%
+    summarise(APW = as.integer(sum(APW)), APL = as.integer(sum(APL))) %>%
+    mutate(Pct = as.integer(APW / (APW + APL) * 1000)) %>%
+    arrange(desc(Pct)) %>%
+    head(1) %>%
+    pull(Pct)
+}
+
+get_standings <- function(yearid) {
+  results <- games_raw %>%
+    filter(Year == yearid) %>%
+    mutate(w_l = as.numeric(PF > PA)) %>%
+    group_by(Team, Type) %>%
+    summarise(W = sum(w_l), 
+            L = sum(w_l == 0), 
+            Pct = as.integer(W / (W + L) * 1000), 
+            PPG = mean(PF)) %>%
+    pivot_wider(names_from = Type, values_from = c(W, L, Pct, PPG), names_sep = ".")
+
+  All_Play <- games_allplay %>%
+    mutate(w_l = as.numeric(PF > PA)) %>%
+    filter(Year == yearid) %>%
+    filter(Type == "Reg") %>%
+    group_by(Team, Type) %>%
+    summarise(APW = sum(APW), 
+            APL = sum(APL), 
+            Pct = as.integer(APW / (APW + APL) * 1000)) %>%
+    select(-Type)
+
+  results %>%
+    inner_join(All_Play, by = "Team") %>%
+    rename(R.W = W.Reg,
+         R.L = L.Reg,
+         R.Pct = Pct.Reg,
+         R.PPG = PPG.Reg,
+         PO.W = W.Playoffs,
+         PO.L = L.Playoffs,
+         PO.Pct = Pct.Playoffs,
+         PO.PPG = PPG.Playoffs,
+         BB.W = W.Championship,
+         BB.L = L.Championship,
+         BB.Pct = Pct.Championship,
+         BB.PPG = PPG.Championship,
+         APW.Pct = Pct) %>%
+    select(Team, R.W, R.L, PO.W, PO.L, BB.W, BB.L, APW, APL) %>%
+    arrange(desc(BB.W), desc(PO.W), desc(R.W)) %>%
+    kable() %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed")) %>%
+    add_header_above(c(" ", "Regular Season" = 2, "Playoffs" = 2, "Busch Bowls" = 2, "All Play" = 2))
+}
+
+get_powerrk <- function(yearid) {
+  games_adj %>%
+    inner_join(games_allplay, by = colnames(games_raw)) %>%
+    filter(Type == "Reg") %>%
+    group_by(Year) %>%
+    mutate(avgpts = mean(PF)) %>%
+    ungroup() %>%
+    filter(Year == yearid) %>%
+    mutate(w_l = as.numeric(PF > PA),
+           sw = as.numeric(APW > APL),
+           WxWk = w_l * Week / 3,
+           APWxWk = APW * Week / 25,
+           PtsvAvgxWk = (PF - avgpts) * (Week / 100),
+           SwxWk = sw * Week / 3,
+           WkScore = WxWk + APWxWk + PtsvAvgxWk + SwxWk) %>%
+    group_by(Team) %>%
+    summarise(apw_ttl = sum(APW), 
+              pts_ttl = as.integer(sum(PF)), 
+              SumScore = as.integer(sum(WkScore))) %>%
+    mutate(apwrk = rank(apw_ttl), 
+           ptsrk = rank(pts_ttl),
+           PowerScore = as.integer(SumScore + apwrk + ptsrk)) %>%
+    arrange(desc(PowerScore)) %>%
+    select(Team, PowerScore, APW = apw_ttl, Pts = pts_ttl, RScore = SumScore) %>%
+    kable() %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed")) %>%
+    add_header_above(c(" ", "TOTAL" = 1, "Components" = 3)) %>%
+    footnote(general = "RScore = Recent Score. Heavier weight assigned to more recent wins, points, APWs, and shoulda-wons.")
+}
+
+#
+#
+# MEASURES
+#
+#
 
 this_year <- max(games_raw$Year)
 
@@ -61,57 +532,6 @@ games_adj <- games_raw %>%
   ungroup() %>%
   mutate(Adj_PF = round(PF / ppg * ty_ppg, digits = 2)) %>%
   select(-ppg)
-
-team01 <- "ADAM HARTMAN"
-team02 <- "DAVID PIKUS"
-team03 <- "DERRIK HARTMAN"
-team04 <- "DREW VOGT"
-team05 <- "JOHN THOMPSON"
-team06 <- "MATT TRAEN"
-team07 <- "MAX APONTE"
-team08 <- "PHIL BASTRON"
-team09 <- "TIM GREVE"
-team10 <- "TIM LANG"
-team11 <- "TODD TRAEN"
-team12 <- "TREVOR SOUPIR"
-
-get_founded <- function(teamid) {
-  games_raw %>% 
-  filter(Team == teamid) %>% 
-  filter(Year == min(Year)) %>% 
-  filter(Week == 1) %>% 
-  pull(Year)
-}
-
-get_buschbowls <- function(teamid) {
-  games_raw %>% 
-  filter(Team == teamid) %>% 
-  filter(Type == "Championship") %>% 
-  mutate(w_l = as.numeric(as.logical(PF > PA))) %>%
-  summarise(champs = sum(w_l)) %>%
-  pull(champs)
-}
-
-get_po_appear <- function(teamid) {
-  games_raw %>% 
-  filter(Team == teamid) %>% 
-  filter(Type == "Playoffs") %>%
-  group_by(Year) %>%
-  summarize(mean(PF)) %>%
-  nrow()
-}
-
-get_winning_seasons <- function(teamid) {
-  games_raw %>% 
-  filter(Team == teamid) %>% 
-  mutate(w_l = as.numeric(as.logical(PF > PA))) %>%
-  group_by(Year) %>%
-  summarise(Win = sum(w_l), Loss = sum(w_l == 0), 
-            Pct = as.double(Win / (Win + Loss))) %>%
-  mutate(over500 = as.numeric(as.logical(Pct > .5))) %>%
-  summarise(winning_seasons = sum(over500)) %>%
-  pull(winning_seasons)
-}
 
 at_wpct_max <- games_raw %>%
   group_by(Team) %>%
@@ -207,256 +627,6 @@ y12t_ppg_min <- games_adj %>%
   pull(PPG) %>%
   as.integer()
 
-get_at_wpct <- function(teamid) {
-  games_raw %>%
-  filter(Team == teamid) %>%
-  mutate(w_l = as.numeric(as.logical(PF > PA))) %>%
-  summarise(Win = sum(w_l), Loss = sum(w_l == 0), Pct = as.integer(Win / (Win + Loss) * 1000)) %>%
-  pull(Pct)
-}
-
-get_at_ppg <- function(teamid) {
-  games_adj %>%
-  filter(Team == teamid) %>%
-  summarise(PPG = round(mean(Adj_PF), digits = 2)) %>%
-  pull(PPG) %>%
-  as.integer()
-}
-
-get_12t_wpct <- function(teamid) {
-  games_raw %>%
-  filter(Team == teamid) %>%
-  filter(Year > 2012) %>%
-  mutate(w_l = as.numeric(as.logical(PF > PA))) %>%
-  summarise(Win = sum(w_l), Loss = sum(w_l == 0), Pct = as.integer(Win / (Win + Loss) * 1000)) %>%
-  pull(Pct)
-}
-
-get_12t_ppg <- function(teamid) {
-  games_adj %>%
-  filter(Team == teamid) %>%
-  filter(Year > 2012) %>%
-  summarise(PPG = round(mean(Adj_PF), digits = 2)) %>%
-  pull(PPG) %>%
-  as.integer()
-}
-
-get_alltime_stats <- function(teamid) {
-  Reg_season <- games_adj %>%
-  filter(Type == "Reg") %>%
-  mutate(w_l = as.numeric(PF > PA)) %>%
-  group_by(Team, .drop = FALSE) %>%
-  summarise(W = sum(w_l), 
-            L = sum(w_l == 0), 
-            Pct = as.integer(W / (W + L) * 1000), 
-            PPG = round(mean(Adj_PF), digits = 2)) %>%
-  filter(Team == teamid)
-
-
-Playoffs <- games_adj %>%
-  filter(Type != "Reg") %>%
-  mutate(w_l = as.numeric(PF > PA)) %>%
-  group_by(Team, .drop = FALSE) %>%
-  summarise(W = sum(w_l), 
-            L = sum(w_l == 0), 
-            Pct = as.integer(W / (W + L) * 1000), 
-            PPG = round(mean(Adj_PF), digits = 2)) %>%
-  filter(Team == teamid)
-
-
-BuschBowls <- games_adj %>%
-  filter(Type == "Championship") %>%
-  mutate(w_l = as.numeric(PF > PA)) %>%
-  group_by(Team, .drop = FALSE) %>%
-  summarise(W = sum(w_l), 
-            L = sum(w_l == 0), 
-            Pct = as.integer(W / (W + L) * 1000), 
-            PPG = round(mean(Adj_PF), digits = 2)) %>%
-  filter(Team == teamid)
-
-All_Play <- games_allplay %>%
-  mutate(w_l = as.numeric(PF > PA)) %>%
-  group_by(Team, .drop = FALSE) %>%
-  summarise(APW = sum(APW), 
-            APL = sum(APL), 
-            Pct = as.integer(APW / (APW + APL) * 1000)) %>%
-  filter(Team == teamid)
-
-
-Reg_season %>%
-  inner_join(Playoffs, by = "Team") %>%
-  inner_join(BuschBowls, by = "Team") %>%
-  inner_join(All_Play, by = "Team") %>%
-  rename(R.W = W.x,
-         R.L = L.x,
-         "R.%" = Pct.x,
-         R.PPG = PPG.x,
-         PO.W = W.y,
-         PO.L = L.y,
-         "PO.%" = Pct.y,
-         PO.PPG = PPG.y,
-         BB.W = W,
-         BB.L = L,
-         BB.Pct = Pct.x.x,
-         BB.PPG = PPG,
-         "APW%" = Pct.y.y) %>%
-  kable() %>%
-  kable_styling() %>%
-  add_header_above(c(" ", "Regular Season" = 4, "Playoffs" = 4, "Busch Bowls" = 4, "All Play" = 3))
-}
-
-
-get_12t_stats <- function(teamid) {
-  Reg_season <- games_adj %>%
-  filter(Year > 2012) %>%
-  filter(Type == "Reg") %>%
-  mutate(w_l = as.numeric(PF > PA)) %>%
-  group_by(Team, .drop = FALSE) %>%
-  summarise(W = sum(w_l), 
-            L = sum(w_l == 0), 
-            Pct = as.integer(W / (W + L) * 1000), 
-            PPG = round(mean(Adj_PF), digits = 2)) %>%
-  filter(Team == teamid)
-
-
-Playoffs <- games_adj %>%
-  filter(Year > 2012) %>%
-  filter(Type != "Reg") %>%
-  mutate(w_l = as.numeric(PF > PA)) %>%
-  group_by(Team, .drop = FALSE) %>%
-  summarise(W = sum(w_l), 
-            L = sum(w_l == 0), 
-            Pct = as.integer(W / (W + L) * 1000), 
-            PPG = round(mean(Adj_PF), digits = 2)) %>%
-  filter(Team == teamid)
-
-
-BuschBowls <- games_adj %>%
-  filter(Year > 2012) %>%
-  filter(Type == "Championship") %>%
-  mutate(w_l = as.numeric(PF > PA)) %>%
-  group_by(Team, .drop = FALSE) %>%
-  summarise(W = sum(w_l), 
-            L = sum(w_l == 0), 
-            Pct = as.integer(W / (W + L) * 1000), 
-            PPG = round(mean(Adj_PF), digits = 2)) %>%
-  filter(Team == teamid)
-
-
-All_Play <- games_allplay %>%
-  filter(Team == teamid) %>%
-  filter(Year > 2012) %>%
-  mutate(w_l = as.numeric(PF > PA)) %>%
-  group_by(Team, .drop = FALSE) %>%
-  summarise(APW = sum(APW), 
-            APL = sum(APL), 
-            Pct = as.integer(APW / (APW + APL) * 1000))
-
-Reg_season %>%
-  inner_join(Playoffs, by = "Team") %>%
-  inner_join(BuschBowls, by = "Team") %>%
-  inner_join(All_Play, by = "Team") %>%
-  rename(R.W = W.x,
-         R.L = L.x,
-         "R.%" = Pct.x,
-         R.PPG = PPG.x,
-         PO.W = W.y,
-         PO.L = L.y,
-         "PO.%" = Pct.y,
-         PO.PPG = PPG.y,
-         BB.W = W,
-         BB.L = L,
-         BB.Pct = Pct.x.x,
-         BB.PPG = PPG,
-         "APW%" = Pct.y.y) %>%
-  kable() %>%
-  kable_styling() %>%
-  add_header_above(c(" ", "Regular Season" = 4, "Playoffs" = 4, "Busch Bowls" = 4, "All Play" = 3))
-}
-
-
-get_season_summary <- function(teamid) {
-  Reg_season <- games_adj %>%
-  filter(Type == "Reg") %>%
-  mutate(w_l = as.numeric(PF > PA)) %>%
-  group_by(Year, Team, .drop = FALSE) %>%
-  summarise(W = sum(w_l), 
-            L = sum(w_l == 0), 
-            Pct = as.integer(W / (W + L) * 1000), 
-            PPG = round(mean(Adj_PF), digits = 2)) %>%
-  filter(Team == teamid)
-
-
-Playoffs <- games_adj %>%
-  filter(Type != "Reg") %>%
-  mutate(w_l = as.numeric(PF > PA)) %>%
-  group_by(Year, Team, .drop = FALSE) %>%
-  summarise(W = sum(w_l), 
-            L = sum(w_l == 0), 
-            Pct = as.integer(W / (W + L) * 1000), 
-            PPG = round(mean(Adj_PF), digits = 2)) %>%
-  filter(Team == teamid)
-
-
-BuschBowls <- games_adj %>%
-  filter(Type == "Championship") %>%
-  mutate(w_l = as.numeric(PF > PA)) %>%
-  group_by(Year, Team, .drop = FALSE) %>%
-  summarise(W = sum(w_l), 
-            L = sum(w_l == 0), 
-            Pct = as.integer(W / (W + L) * 1000), 
-            PPG = round(mean(Adj_PF), digits = 2)) %>%
-  filter(Team == teamid)
-
-All_Play <- games_allplay %>%
-  mutate(w_l = as.numeric(PF > PA)) %>%
-  group_by(Year, Team, .drop = FALSE) %>%
-  summarise(APW = sum(APW), 
-            APL = sum(APL), 
-            Pct = as.integer(APW / (APW + APL) * 1000)) %>%
-  filter(Team == teamid)
-
-
-Reg_season %>%
-  inner_join(Playoffs, by = c("Year", "Team")) %>%
-  inner_join(BuschBowls, by = c("Year", "Team")) %>%
-  inner_join(All_Play, by = c("Year", "Team")) %>%
-  rename(R.W = W.x,
-         R.L = L.x,
-         "R.%" = Pct.x,
-         R.PPG = PPG.x,
-         PO.W = W.y,
-         PO.L = L.y,
-         "PO.%" = Pct.y,
-         PO.PPG = PPG.y,
-         BB.W = W,
-         BB.L = L,
-         BB.Pct = Pct.x.x,
-         BB.PPG = PPG,
-         "APW%" = Pct.y.y) %>%
-  kable() %>%
-  kable_styling(bootstrap_options = c("striped", "hover", "condensed")) %>%
-  add_header_above(c(" " = 2, "Regular Season" = 4, "Playoffs" = 4, "Busch Bowls" = 4, "All Play" = 3))
-}
-
-
-get_game_log <- function(teamid) {
-  games_adj %>%
-  filter(Team == teamid) %>%
-  mutate("W/L" = as.numeric(PF > PA)) %>%
-  kable() %>%
-  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE, position = "left")
-}
-
-get_champion <- function(yearid) {
-  games_raw %>%
-    filter(Type == "Championship") %>%
-    mutate(w_l = as.numeric(PF > PA)) %>%
-    filter(w_l == 1) %>%
-    filter(Year == yearid) %>%
-    pull(Team)
-}
-
 champ2004 <- get_champion(2004)
 champ2005 <- get_champion(2005)
 champ2006 <- get_champion(2006)
@@ -473,16 +643,6 @@ champ2016 <- get_champion(2016)
 champ2017 <- get_champion(2017)
 champ2018 <- get_champion(2018)
 champ2019 <- get_champion(2019)
-
-
-get_runnerup <- function(yearid) {
-  games_raw %>%
-    filter(Type == "Championship") %>%
-    mutate(w_l = as.numeric(PF > PA)) %>%
-    filter(w_l == 0) %>%
-    filter(Year == yearid) %>%
-    pull(Team)
-}
 
 runnerup2003 <- get_runnerup(2003)
 runnerup2004 <- get_runnerup(2004)
@@ -502,17 +662,6 @@ runnerup2017 <- get_runnerup(2017)
 runnerup2018 <- get_runnerup(2018)
 runnerup2019 <- get_runnerup(2019)
 
-get_mostptsteam <- function(yearid) {
-  games_raw %>%
-    filter(Type == "Reg") %>%
-    group_by(Team, Year) %>%
-    summarise(tpts = sum(PF)) %>%
-    filter(Year == yearid) %>%
-    arrange(desc(tpts)) %>%
-    head(1) %>%
-    pull(Team)
-}
-
 mostptsteam2003 <- get_mostptsteam(2003)
 mostptsteam2004 <- get_mostptsteam(2004)
 mostptsteam2005 <- get_mostptsteam(2005)
@@ -529,18 +678,6 @@ mostptsteam2016 <- get_mostptsteam(2016)
 mostptsteam2017 <- get_mostptsteam(2017)
 mostptsteam2018 <- get_mostptsteam(2018)
 mostptsteam2019 <- get_mostptsteam(2019)
-
-
-get_mostptspts <- function(yearid) {
-  games_raw %>%
-    filter(Type == "Reg") %>%
-    group_by(Team, Year) %>%
-    summarise(tpts = sum(PF)) %>%
-    filter(Year == yearid) %>%
-    arrange(desc(tpts)) %>%
-    head(1) %>%
-    pull(tpts)
-}
 
 mostptspts2003 <- get_mostptspts(2003)
 mostptspts2004 <- get_mostptspts(2004)
@@ -559,18 +696,6 @@ mostptspts2017 <- get_mostptspts(2017)
 mostptspts2018 <- get_mostptspts(2018)
 mostptspts2019 <- get_mostptspts(2019)
 
-get_allplaypctteam <- function(yearid) {
-  games_allplay %>%
-  filter(Year == yearid) %>%
-  filter(Type == "Reg") %>%
-  group_by(Team) %>%
-  summarise(APW = as.integer(sum(APW)), APL = as.integer(sum(APL))) %>%
-  mutate(Pct = as.integer(APW / (APW + APL) * 1000)) %>%
-  arrange(desc(Pct)) %>%
-  head(1) %>%
-  pull(Team)
-}
-
 allplaypctteam2003 <- get_allplaypctteam(2003)
 allplaypctteam2004 <- get_allplaypctteam(2004)
 allplaypctteam2005 <- get_allplaypctteam(2005)
@@ -588,18 +713,6 @@ allplaypctteam2017 <- get_allplaypctteam(2017)
 allplaypctteam2018 <- get_allplaypctteam(2018)
 allplaypctteam2019 <- get_allplaypctteam(2019)
 
-get_allplaypctpct <- function(yearid) {
-  games_allplay %>%
-  filter(Year == yearid) %>%
-  filter(Type == "Reg") %>%
-  group_by(Team) %>%
-  summarise(APW = as.integer(sum(APW)), APL = as.integer(sum(APL))) %>%
-  mutate(Pct = as.integer(APW / (APW + APL) * 1000)) %>%
-  arrange(desc(Pct)) %>%
-  head(1) %>%
-  pull(Pct)
-}
-
 allplaypctpct2003 <- get_allplaypctpct(2003)
 allplaypctpct2004 <- get_allplaypctpct(2004)
 allplaypctpct2005 <- get_allplaypctpct(2005)
@@ -616,79 +729,6 @@ allplaypctpct2016 <- get_allplaypctpct(2016)
 allplaypctpct2017 <- get_allplaypctpct(2017)
 allplaypctpct2018 <- get_allplaypctpct(2018)
 allplaypctpct2019 <- get_allplaypctpct(2019)
-
-get_standings <- function(yearid) {
-results <- games_raw %>%
-  filter(Year == yearid) %>%
-  mutate(w_l = as.numeric(PF > PA)) %>%
-  group_by(Team, Type) %>%
-  summarise(W = sum(w_l), 
-            L = sum(w_l == 0), 
-            Pct = as.integer(W / (W + L) * 1000), 
-            PPG = mean(PF)) %>%
-  pivot_wider(names_from = Type, values_from = c(W, L, Pct, PPG), names_sep = ".")
-
-All_Play <- games_allplay %>%
-  mutate(w_l = as.numeric(PF > PA)) %>%
-  filter(Year == yearid) %>%
-  filter(Type == "Reg") %>%
-  group_by(Team, Type) %>%
-  summarise(APW = sum(APW), 
-            APL = sum(APL), 
-            Pct = as.integer(APW / (APW + APL) * 1000)) %>%
-  select(-Type)
-
-results %>%
-  inner_join(All_Play, by = "Team") %>%
-  rename(R.W = W.Reg,
-         R.L = L.Reg,
-         R.Pct = Pct.Reg,
-         R.PPG = PPG.Reg,
-         PO.W = W.Playoffs,
-         PO.L = L.Playoffs,
-         PO.Pct = Pct.Playoffs,
-         PO.PPG = PPG.Playoffs,
-         BB.W = W.Championship,
-         BB.L = L.Championship,
-         BB.Pct = Pct.Championship,
-         BB.PPG = PPG.Championship,
-         APW.Pct = Pct) %>%
-  select(Team, R.W, R.L, PO.W, PO.L, BB.W, BB.L, APW, APL) %>%
-  arrange(desc(BB.W), desc(PO.W), desc(R.W)) %>%
-  kable() %>%
-  kable_styling(bootstrap_options = c("striped", "hover", "condensed")) %>%
-  add_header_above(c(" ", "Regular Season" = 2, "Playoffs" = 2, "Busch Bowls" = 2, "All Play" = 2))
-}
-
-get_powerrk <- function(yearid) {
-  games_adj %>%
-    inner_join(games_allplay, by = colnames(games_raw)) %>%
-    filter(Type == "Reg") %>%
-    group_by(Year) %>%
-    mutate(avgpts = mean(PF)) %>%
-    ungroup() %>%
-    filter(Year == yearid) %>%
-    mutate(w_l = as.numeric(PF > PA),
-           sw = as.numeric(APW > APL),
-           WxWk = w_l * Week / 3,
-           APWxWk = APW * Week / 25,
-           PtsvAvgxWk = (PF - avgpts) * (Week / 100),
-           SwxWk = sw * Week / 3,
-           WkScore = WxWk + APWxWk + PtsvAvgxWk + SwxWk) %>%
-    group_by(Team) %>%
-    summarise(apw_ttl = sum(APW), 
-              pts_ttl = as.integer(sum(PF)), 
-              SumScore = as.integer(sum(WkScore))) %>%
-    mutate(apwrk = rank(apw_ttl), 
-           ptsrk = rank(pts_ttl),
-           PowerScore = as.integer(SumScore + apwrk + ptsrk)) %>%
-    arrange(desc(PowerScore)) %>%
-    select(Team, PowerScore, APW = apw_ttl, Pts = pts_ttl, RScore = SumScore) %>%
-    kable() %>%
-    kable_styling(bootstrap_options = c("striped", "hover", "condensed")) %>%
-    add_header_above(c(" ", "TOTAL" = 1, "Components" = 3)) %>%
-    footnote(general = "RScore = Recent Score. Heavier weight assigned to more recent wins, points, APWs, and shoulda-wons.")
-}
 
 ```
 
@@ -2514,6 +2554,12 @@ Row
 ### Career
 
 ```{r}
+#
+#
+# ALL TIME LEADERBOARD
+#
+#
+
 at_wins <- games_raw %>%
   group_by(Team) %>%
   filter(n() > 23) %>%
@@ -2739,6 +2785,12 @@ Row
 ### Career Wins
 
 ``` {r}
+#
+#
+# ALL TIME RECORD TABLES
+#
+#
+
 games_raw %>%
   group_by(Team) %>%
   filter(n() > 23) %>%
@@ -3051,6 +3103,12 @@ Row
 ### Career
 
 ```{r}
+#
+#
+# 12 TEAM LEADERBOARD
+#
+#
+
 at_wins <- games_raw %>%
   filter(Year > 2012) %>%
   group_by(Team) %>%
@@ -3290,6 +3348,12 @@ Row
 ### Career Wins
 
 ``` {r}
+#
+#
+# 12 TEAM ERA TABLES
+#
+#
+
 games_raw %>%
   group_by(Team) %>%
   filter(n() > 23) %>%
@@ -3604,15 +3668,3 @@ games_adj %>%
 
 ```
 
-
-NEWS & TALK
-===================================== 
-
-### twitter feed
-Test
-
-### slack feed
-Test
-
-### Talking Busch feed
-Test
