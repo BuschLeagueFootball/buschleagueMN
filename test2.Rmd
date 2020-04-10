@@ -13,6 +13,56 @@ library(flexdashboard)
 library(tidyverse)
 library(knitr)
 library(kableExtra)
+library(plotly)
+
+#
+#
+# TEAM ASSIGNMENTS, LINKING, CLEANING
+#
+#
+
+team01 <- "ADAM HARTMAN"
+team02 <- "DAVID PIKUS"
+team03 <- "DERRIK HARTMAN"
+team04 <- "DREW VOGT"
+team05 <- "JOHN THOMPSON"
+team06 <- "MATT TRAEN"
+team07 <- "MAX APONTE"
+team08 <- "PHIL BASTRON"
+team09 <- "TIM GREVE"
+team10 <- "TIM LANG"
+team11 <- "TODD TRAEN"
+team12 <- "TREVOR SOUPIR"
+
+#
+# NEED TO UPDATE WITH NEW TEAM NAMES AND SWITCH JEFF OUT WITH TODD
+#
+
+teamdf <- tibble(
+  Team = c("NightTraen_Reign", 
+           "Breaston_Plants Inc", 
+           "Heartbreak_Kid", 
+           "DILLON_PANTHERS", 
+           "B1G_HAUS", 
+           "Team_Aponte", 
+           "Pre-Snap_Adjustment", 
+           "Just Drew _It", 
+           "The_Peppy Kids", 
+           "Soup_du Jour", 
+           "Easy As_A Bisi", 
+           "Hart_attack"),
+  owner = c("MATT TRAEN", 
+            "TIM GREVE", 
+            "TIM LANG", 
+            "JEFF KING", 
+            "DAVID PIKUS", 
+            "MAX APONTE", 
+            "JOHN THOMPSON", 
+            "DREW VOGT", 
+            "PHIL BASTRON", 
+            "TREVOR SOUPIR", 
+            "DERRIK HARTMAN", 
+            "ADAM HARTMAN"))
 
 #
 #
@@ -25,28 +75,6 @@ talking_busch <- "https://youtu.be/J0CQxOk39DQ"
 ggl_sheet <- "https://docs.google.com/spreadsheets/d/e/2PACX-1vRPAR9n5KuCw3Mw_Ka48khDgK28rrnD4XujJ_tAadcA_kmbYjZF6ZFKX-7WGRHBlY47N8jP6G8JgG1k/pub?gid=0&single=true&output=csv"
 
 ggl_sheet_draft <- "https://docs.google.com/spreadsheets/d/e/2PACX-1vT7vcwUpOdVzcH6rRwaZWF-Z7mfmCF9rjkBoYNmj56kbho4FI9SB5hBUlGZcrQOdaHwLqIoo1sTYEr0/pub?gid=0&single=true&output=csv"
-
-#
-#
-# DRAFT CLEANING
-#
-#
-
-draft <- read_csv(ggl_sheet_draft)
-
-draft$Player <- toupper(draft$Player)
-
-draft$Franchise <- toupper(draft$Franchise)
-
-#
-#
-# PLAYER DATA CLEANING
-#
-#
-
-playerdata <- read_csv("FantasyFootballData.csv")
-
-playerdata$Player <- toupper(playerdata$Player)
 
 #
 #
@@ -67,24 +95,62 @@ games_raw$Team <- as.factor(games_raw$Team)
 
 write_csv(games_raw, "gamessource.csv")
 
+this_year <- max(games_raw$Year)
+
 #
 #
-# TEAM ASSIGNMENTS, LINKING, CLEANING
+# DRAFT CLEANING
 #
 #
 
-team01 <- "ADAM HARTMAN"
-team02 <- "DAVID PIKUS"
-team03 <- "DERRIK HARTMAN"
-team04 <- "DREW VOGT"
-team05 <- "JOHN THOMPSON"
-team06 <- "MATT TRAEN"
-team07 <- "MAX APONTE"
-team08 <- "PHIL BASTRON"
-team09 <- "TIM GREVE"
-team10 <- "TIM LANG"
-team11 <- "TODD TRAEN"
-team12 <- "TREVOR SOUPIR"
+draft <- read_csv(ggl_sheet_draft)
+
+draft$Player <- toupper(draft$Player)
+
+draft$Franchise <- toupper(draft$Franchise)
+
+draft$Value <- parse_number(draft$Value)
+
+draft <- draft %>%
+  rename(draft_by = Franchise, 
+         Position = Pos)
+
+draft$Player <- gsub("\\s$", "", draft$Player)
+draft$Player <- gsub(",\\s.+$", "", draft$Player)
+draft$Player <- gsub("\\s[A-Z]{2,3}$", "", draft$Player)
+draft$Player <- gsub("(D/ST)\\s(D/ST)\\s?", "D/ST", draft$Player)
+draft$Player <- gsub("DARRELL HENDERSON", "DARRELL HENDERSON JR.", draft$Player)
+
+draft$Position <- gsub("\\s?QB\\s?", "Quarterback", draft$Position)
+draft$Position <- gsub("\\s?RB\\s?", "Running Back", draft$Position)
+draft$Position <- gsub("\\s?WR\\s?", "Wide Receiver", draft$Position)
+draft$Position <- gsub("\\s?TE\\s?", "Tight End", draft$Position)
+draft$Position <- gsub("\\s?ST\\s?", "Defense", draft$Position)
+
+draft_ty <- draft %>%
+  filter(Year == this_year)
+
+#
+#
+# PLAYER DATA CLEANING
+#
+#
+
+rosterdata <- read_csv("FantasyFootballData.csv")
+
+rosterdata$Player <- toupper(rosterdata$Player)
+
+rosterdata <- left_join(rosterdata, teamdf)
+
+rosterdata <- rosterdata %>%
+  select(-playerrosterslot)
+
+rosterdata <- rosterdata %>%
+  rename(Week = scoringPeriodId, d_Pred = ActualMinusPredicted)
+
+rosterdata$Predicted <- round(rosterdata$Predicted, 2)
+
+rosterdata$d_Pred <- round(rosterdata$d_Pred, 2)
 
 #
 #
@@ -493,7 +559,7 @@ get_powerrk <- function(yearid) {
     arrange(desc(PowerScore)) %>%
     select(Team, PowerScore, APW = apw_ttl, Pts = pts_ttl, RScore = SumScore) %>%
     kable() %>%
-    kable_styling(bootstrap_options = c("striped", "hover", "condensed")) %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE, position = "center") %>%
     add_header_above(c(" ", "TOTAL" = 1, "Components" = 3)) %>%
     footnote(general = "RScore = Recent Score. Heavier weight assigned to more recent wins, points, APWs, and shoulda-wons.")
 }
@@ -503,8 +569,6 @@ get_powerrk <- function(yearid) {
 # MEASURES
 #
 #
-
-this_year <- max(games_raw$Year)
 
 games_ty <- games_raw %>%
   filter(Year == this_year) %>%
@@ -733,10 +797,14 @@ allplaypctpct2019 <- get_allplaypctpct(2019)
 ```
 
 
-HOME
+HOME {data-orientation=rows}
 =====================================
 
-Column
+Row {data-height=30}
+-------------------------------------
+**Updated as of week `r this_week`, `r this_year`**
+
+Row
 -------------------------------------
 
 ### Rankings
@@ -745,12 +813,122 @@ Column
 get_powerrk(this_year)
 ```
 
-Column
--------------------------------------
-
 ### What's Happening?
-Test
+```{r}
+#
+# GETTING PTS AND EXPECTED
+#
 
+espn_pred <- rosterdata %>%
+  filter(Week < 13) %>%
+  filter(Starter == "Starter") %>%
+  group_by(owner) %>%
+  summarise(Predicted = sum(Predicted, na.rm = TRUE)) %>%
+  ungroup() %>%
+  rename(Team = owner) %>%
+  filter(!is.na(Team))
+
+espn_actual <- rosterdata %>%
+  filter(Week < 13) %>%
+  filter(Starter == "Starter") %>%
+  group_by(owner) %>%
+  summarise(Actual = sum(Actual, na.rm = TRUE)) %>%
+  ungroup() %>%
+  rename(Team = owner)
+
+#
+# GETTING OPTIMAL
+#
+
+ranked <- rosterdata %>%
+  select(Week, Player, Position, owner, Actual) %>%
+  group_by(owner, Position, Week) %>%
+  mutate(Rank = rank(-Actual, ties.method = "first")) %>%
+  arrange(owner) %>%
+  filter(!is.na(owner))
+
+rankedqbs <- ranked %>%
+  filter(Position == "Quarterback") %>%
+  filter(Rank == 1) %>%
+  mutate(PosOrder = 1)
+
+rankedrbs <- ranked %>%
+  filter(Position == "Running Back") %>%
+  filter(Rank <= 2) %>%
+  mutate(PosOrder = 2)
+
+rankedwrs <- ranked %>%
+  filter(Position == "Wide Receiver") %>%
+  filter(Rank <= 2) %>%
+  mutate(PosOrder = 3)
+
+rankedtes <- ranked %>%
+  filter(Position == "Tight End") %>%
+  filter(Rank <= 1) %>%
+  mutate(PosOrder = 4)
+
+rankeddef <- ranked %>%
+  filter(Position == "Defense") %>%
+  filter(Rank <= 1) %>%
+  mutate(PosOrder = 6)
+
+rankedfl <- ranked %>%
+  anti_join(bind_rows(rankedrbs, 
+                      rankedwrs, 
+                      rankedtes)) %>%
+  filter(Position %in% c("Running Back", 
+                         "Wide Receiver", 
+                         "Tight End")) %>%
+  group_by(Week, owner) %>%
+  mutate(Rank = rank(-Actual, ties.method = "first")) %>%
+  filter(Rank == 1) %>%
+  mutate(Position = "Flex") %>%
+  mutate(PosOrder = 5)
+
+optimallineup <- bind_rows(rankedqbs, 
+                           rankedrbs, 
+                           rankedwrs, 
+                           rankedtes, 
+                           rankedfl, 
+                           rankeddef) %>%
+  arrange(owner,Week,PosOrder)
+
+optimal_total <- optimallineup %>%
+  group_by(owner) %>%
+  summarise(Optimal = sum(Actual)) %>%
+  ungroup() %>%
+  rename(Team = owner)
+
+pts_vs_opt <- inner_join(espn_actual, optimal_total) %>% 
+  arrange(desc(Actual))
+
+pts_vs_opt$Team <- factor(pts_vs_opt$Team, levels = pts_vs_opt$Team[order(pts_vs_opt$Actual, decreasing = TRUE)])
+espn_pred$Team <- factor(espn_pred$Team, levels = pts_vs_opt$Team[order(pts_vs_opt$Actual, decreasing = TRUE)])
+
+pts_vs_opt <- pts_vs_opt %>%
+  pivot_longer(-Team, names_to = "category", values_to = "n")
+
+ggplot() +
+  geom_line(pts_vs_opt, 
+            mapping = aes(x = Team, y = n), 
+            linetype = "dashed", 
+            size = .5) + 
+  geom_point(pts_vs_opt, 
+             mapping = aes(x = Team, y = n, color = category), 
+             size = 4) +
+  geom_point(espn_pred, 
+             mapping = aes(x = Team, y = Predicted, color = "ESPN Pred"), 
+             size = 4,
+             shape = 1) +
+  scale_color_manual("Legend", values = c("black", "orange", "grey")) +
+  labs(title = "Total Pts vs ESPN Preds & Optimal Lineups",
+       subtitle = "Sorted by actual points scored (black)", 
+       caption = "*black line = spread between actual pts and most possible pts") +
+  ylab("Points") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90)) +
+  theme(legend.position="top")
+```
 
 NFL PLAYERS
 ===================================== 
@@ -2179,6 +2357,7 @@ get_powerrk(2007)
 get_standings(2007)
 ```
 
+
 2008 {data-navmenu="SEASONS" data-orientation=rows}
 ===================================== 
 
@@ -2209,6 +2388,32 @@ get_powerrk(2008)
 ```{r}
 get_standings(2008)
 ```
+
+
+2009 {data-navmenu="SEASONS" data-orientation=rows}
+===================================== 
+
+Row
+-------------------------------------
+
+### BLF {data-width=50}
+![](blf_logo.png)
+
+### 2009 BLF Results and Standings
+BUSCH BOWL CHAMPION: **PHIL BASTRON**  
+BUSCH BOWL RUNNER UP: **DREW VOGT**  
+
+Row
+-------------------------------------
+
+### NOTICE
+
+2009 data has been **LOST**. Any information leading to the discover of this data is subject to a reward of a case of beer from MATT TRAEN.
+
+
+Information:
+
+I'm about 90% certain the league was hosted on ESPN. I've been unable to access it and I believe that back in 2009 ESPN did not archive old leagues. But I don't know that for sure. If you can still access this league please contact me to claim your reward. -MATT TRAEN
 
 
 2010 {data-navmenu="SEASONS" data-orientation=rows}

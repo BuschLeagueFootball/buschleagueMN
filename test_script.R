@@ -296,3 +296,56 @@ gofunction = function(weeks = weeks, leagueID = leagueID, year = year){
 
 gofunction(weeks = weeks, leagueID = leagueID, year = year)
 
+# CLEANING ROSTER DATA CHECK
+
+war_calc %>% filter(Week == 1) %>% group_by(Franchise) %>% count()
+war_calc %>% filter(Week == 1) %>% group_by(Franchise) %>% summarise(spent = sum(Value))
+draft_ty %>% filter(Franchise == "TIM GREVE")
+war_calc %>% filter(Franchise == "TIM GREVE") %>% filter(Pos == "Quarter") %>% select(Player, Position, Value, Week) %>% arrange(desc(Value))
+sort(unique(war_calc$Player))
+
+
+ranked = 
+  rosterdata %>%
+  select(Week,Player,Position,owner,Actual) %>%
+  group_by(owner,Position,Week) %>%
+  mutate(Rank = rank(-Actual, ties.method = "first")) %>%
+  arrange(owner) %>%
+  filter(!is.na(owner))
+rankedqbs =
+  ranked %>%
+  filter(Position == "Quarterback") %>%
+  filter(Rank == 1) %>%
+  mutate(PosOrder = 1)
+rankedrbs =
+  ranked %>%
+  filter(Position == "Running Back") %>%
+  filter(Rank <= 2) %>%
+  mutate(PosOrder = 2)
+rankedwrs =
+  ranked %>%
+  filter(Position == "Wide Receiver") %>%
+  filter(Rank <= 2) %>%
+  mutate(PosOrder = 3)
+rankedtes =
+  ranked %>%
+  filter(Position == "Tight End") %>%
+  filter(Rank <= 1) %>%
+  mutate(PosOrder = 4)
+rankeddef =
+  ranked %>%
+  filter(Position == "Defense") %>%
+  filter(Rank <= 1) %>%
+  mutate(PosOrder = 6)
+rankedfl =
+  ranked %>%
+  anti_join(bind_rows(rankedrbs,rankedwrs,rankedtes)) %>%
+  filter(Position %in% c("Running Back", "Wide Receiver", "Tight End")) %>%
+  group_by(Week,owner) %>%
+  mutate(Rank = rank(-Actual, ties.method = "first")) %>%
+  filter(Rank==1) %>%
+  mutate(Position="Flex") %>%
+  mutate(PosOrder = 5)
+optimallineup = 
+  bind_rows(rankedqbs,rankedrbs,rankedwrs,rankedtes,rankedfl,rankeddef) %>%
+  arrange(owner,Week,PosOrder)
