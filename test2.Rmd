@@ -34,6 +34,8 @@ team10 <- "TIM LANG"
 team11 <- "TODD TRAEN"
 team12 <- "TREVOR SOUPIR"
 
+active_teams <- c(team01, team02, team03, team04, team05, team06, team07, team08, team09, team10, team12) # no Todd until 2020 games are played
+
 #
 # NEED TO UPDATE WITH NEW TEAM NAMES AND SWITCH JEFF OUT WITH TODD
 #
@@ -813,7 +815,7 @@ Row
 get_powerrk(this_year)
 ```
 
-### What's Happening?
+### This Year's Points Breakdown
 ```{r}
 #
 # GETTING PTS AND EXPECTED
@@ -929,6 +931,43 @@ ggplot() +
   theme(axis.text.x = element_text(angle = 90)) +
   theme(legend.position="top")
 ```
+
+Row
+-------------------------------------
+### Best Power Scores of the 12 Team Era
+
+``` {r}
+games_adj %>%
+  inner_join(games_allplay, by = colnames(games_raw)) %>%
+  filter(Type == "Reg") %>%
+  filter(Year > 2012) %>%
+  group_by(Year) %>%
+  mutate(avgpts = mean(PF)) %>%
+  ungroup() %>%
+  mutate(w_l = as.numeric(PF > PA),
+         sw = as.numeric(APW > APL),
+         WxWk = w_l * Week / 3,
+         APWxWk = APW * Week / 25,
+         PtsvAvgxWk = (PF - avgpts) * (Week / 100),
+         SwxWk = sw * Week / 3,
+         WkScore = WxWk + APWxWk + PtsvAvgxWk + SwxWk) %>%
+  group_by(Year, Team) %>%
+  summarise(apw_ttl = sum(APW), 
+            pts_ttl = as.integer(sum(PF)), 
+            SumScore = as.integer(sum(WkScore))) %>%
+  mutate(apwrk = rank(apw_ttl), 
+         ptsrk = rank(pts_ttl),
+         PowerScore = as.integer(SumScore + apwrk + ptsrk)) %>%
+  arrange(desc(PowerScore)) %>%
+  head(10) %>%
+  select(Year, Team, PowerScore, APW = apw_ttl, Pts = pts_ttl, RScore = SumScore) %>%
+    kable() %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed"), position = "center")
+
+```
+
+### Record Watch
+
 
 NFL PLAYERS
 ===================================== 
@@ -3873,3 +3912,92 @@ games_adj %>%
 
 ```
 
+HEAD-TO-HEAD {data-navmenu="RECORDS" data-orientation=rows}
+===================================== 
+
+Row
+-------------------------------------
+
+### All Time
+
+```{r}
+games_raw %>%
+  mutate(win = as.numeric(PF > PA)) %>%
+  mutate(loss = as.numeric(PA > PF)) %>%
+  filter(Team == team01 |
+           Team == team02 |
+           Team == team03 |
+           Team == team04 |
+           Team == team05 |
+           Team == team06 |
+           Team == team07 |
+           Team == team08 |
+           Team == team09 |
+           Team == team10 |
+           Team == team11 |
+           Team == team12) %>%
+  group_by(Team, Opponent) %>%
+  summarise(W = sum(win), L = sum(loss)) %>%
+  unite("W/L", c(W, L), sep = "-") %>%
+  pivot_wider(names_from = Opponent, values_from = "W/L") %>%
+  select(Team, 
+         team01, 
+         team02,
+         team03,
+         team04,
+         team05,
+         team06,
+         team07,
+         team08,
+         team09,
+         team10,
+         team12) %>%
+  kable(align = "c") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), position = "center") %>%
+    add_header_above(c(" ", "OPPONENTS" = 11))
+
+```
+
+Row
+-------------------------------------
+
+### 12 Team Era
+
+```{r}
+games_raw %>%
+  filter(Year > 2012) %>%
+  mutate(win = as.numeric(PF > PA)) %>%
+  mutate(loss = as.numeric(PA > PF)) %>%
+  filter(Team == team01 |
+           Team == team02 |
+           Team == team03 |
+           Team == team04 |
+           Team == team05 |
+           Team == team06 |
+           Team == team07 |
+           Team == team08 |
+           Team == team09 |
+           Team == team10 |
+           Team == team11 |
+           Team == team12) %>%
+  group_by(Team, Opponent) %>%
+  summarise(W = sum(win), L = sum(loss)) %>%
+  unite("W/L", c(W, L), sep = "-") %>%
+  pivot_wider(names_from = Opponent, values_from = "W/L") %>%
+  select(Team, 
+         team01, 
+         team02,
+         team03,
+         team04,
+         team05,
+         team06,
+         team07,
+         team08,
+         team09,
+         team10,
+         team12) %>%
+  kable(align = "c") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), position = "center") %>%
+    add_header_above(c(" ", "OPPONENTS" = 11))
+
+```
