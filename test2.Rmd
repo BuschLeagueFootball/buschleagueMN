@@ -14,12 +14,13 @@ library(tidyverse)
 library(knitr)
 library(kableExtra)
 library(plotly)
+library(rvest)
 
-#
+##############################################################################
 #
 # TEAM ASSIGNMENTS, LINKING, CLEANING
 #
-#
+##############################################################################
 
 team01 <- "ADAM HARTMAN"
 team02 <- "DAVID PIKUS"
@@ -66,11 +67,11 @@ teamdf <- tibble(
             "DERRIK HARTMAN", 
             "ADAM HARTMAN"))
 
-#
+##############################################################################
 #
 # SOURCE DATA
 #
-#
+##############################################################################
 
 talking_busch <- "https://youtu.be/J0CQxOk39DQ"
 
@@ -78,11 +79,11 @@ ggl_sheet <- "https://docs.google.com/spreadsheets/d/e/2PACX-1vRPAR9n5KuCw3Mw_Ka
 
 ggl_sheet_draft <- "https://docs.google.com/spreadsheets/d/e/2PACX-1vT7vcwUpOdVzcH6rRwaZWF-Z7mfmCF9rjkBoYNmj56kbho4FI9SB5hBUlGZcrQOdaHwLqIoo1sTYEr0/pub?gid=0&single=true&output=csv"
 
-#
+##############################################################################
 #
 # GAMES CLEANING
 #
-#
+##############################################################################
 
 games_raw <- read_csv(ggl_sheet)
 
@@ -99,11 +100,17 @@ write_csv(games_raw, "gamessource.csv")
 
 this_year <- max(games_raw$Year)
 
-#
+games_ty <- games_raw %>%
+  filter(Year == this_year) %>%
+  arrange(desc(Week))
+
+this_week <- games_ty[[1, 2]]
+
+##############################################################################
 #
 # DRAFT CLEANING
 #
-#
+##############################################################################
 
 draft <- read_csv(ggl_sheet_draft)
 
@@ -132,11 +139,11 @@ draft$Position <- gsub("\\s?ST\\s?", "Defense", draft$Position)
 draft_ty <- draft %>%
   filter(Year == this_year)
 
-#
+##############################################################################
 #
 # PLAYER DATA CLEANING
 #
-#
+##############################################################################
 
 rosterdata <- read_csv("FantasyFootballData.csv")
 
@@ -154,11 +161,69 @@ rosterdata$Predicted <- round(rosterdata$Predicted, 2)
 
 rosterdata$d_Pred <- round(rosterdata$d_Pred, 2)
 
+
+##############################################################################
 #
+# FANTASY PROS WEEKLY SCORING DATA AND CLEANING
+#
+##############################################################################
+
+base <- "https://www.fantasypros.com/nfl/reports/leaders/?year="
+mid <- "&start="
+tail <- "&end="
+
+fp_list <- NULL
+
+for (i in 1:this_week) {
+  
+  url <- paste0(base, this_year, mid, i, tail, i)
+  
+  fp_com <- read_html(url)
+  
+  fp_data <-html_table(fp_com)[[1]] %>%
+    as_tibble()
+  
+  fp_data$Week <- i
+  
+  fp_list[[i]] <- fp_data
+  
+}
+
+fp_data = do.call(rbind, fp_list)
+
+fp_data <- fp_data %>%
+  select(-Rank, -Games, -Avg)
+
+fp_data$Player <- toupper(fp_data$Player)
+
+fp_data$Player <- gsub("MITCH TRUBISKY", "MITCHELL TRUBISKY", fp_data$Player)
+fp_data$Player <- gsub("D.J. MOORE", "DJ MOORE", fp_data$Player)
+fp_data$Player <- gsub("D.K. METCALF", "DK METCALF", fp_data$Player)
+fp_data$Player <- gsub("MARVIN JONES", "MARVIN JONES JR.", fp_data$Player)
+fp_data$Player <- gsub("WILL FULLER", "WILL FULLER V", fp_data$Player)
+fp_data$Player <- gsub("DARRELL HENDERSON", "DARRELL HENDERSON JR.", fp_data$Player)
+fp_data$Player <- gsub("DUKE JOHNSON", "DUKE JOHNSON JR.", fp_data$Player)
+fp_data$Player <- gsub("TODD GURLEY", "TODD GURLEY II", fp_data$Player)
+
+
+fp_data <- merge(fp_data, draft_ty, by = "Player", all.x = TRUE)
+
+fp_data$Value <- fp_data$Value %>%
+  replace_na(0)
+
+fp_data$draft_by <- fp_data$draft_by %>%
+  replace_na("undrafted")
+
+fp_data <- fp_data %>%
+  select(-Position.y, -Year) %>%
+  rename(Position = Position.x)
+
+
+##############################################################################
 #
 # CUSTOM FUNCTIONS
 #
-#
+##############################################################################
 
 get_founded <- function(teamid) {
   games_raw %>% 
@@ -425,8 +490,10 @@ get_game_log <- function(teamid) {
   games_adj %>%
     filter(Team == teamid) %>%
     mutate("W/L" = as.numeric(PF > PA)) %>%
-    kable() %>%
-    kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE, position = "left")
+    DT::datatable(options = list(
+    class = "display",
+    pageLength = 50
+  ))
 }
 
 get_champion <- function(yearid) {
@@ -566,15 +633,11 @@ get_powerrk <- function(yearid) {
     footnote(general = "RScore = Recent Score. Heavier weight assigned to more recent wins, points, APWs, and shoulda-wons.")
 }
 
-#
+##############################################################################
 #
 # MEASURES
 #
-#
-
-games_ty <- games_raw %>%
-  filter(Year == this_year) %>%
-  arrange(desc(Week))
+##############################################################################
 
 games_allplay <- games_raw %>%
   group_by(Week, Year) %>%
@@ -583,8 +646,6 @@ games_allplay <- games_raw %>%
   mutate(l_rank = ifelse(Year == 2008, rank(-PF) / 4 + 1, rank(-PF))) %>%
   mutate(APL = as.integer(l_rank - 1)) %>%
   select(-w_rank, -l_rank)
-
-this_week <- games_ty[[1, 2]]
 
 ty_ppg <- games_raw %>%
   group_by(Year) %>%
@@ -796,6 +857,38 @@ allplaypctpct2017 <- get_allplaypctpct(2017)
 allplaypctpct2018 <- get_allplaypctpct(2018)
 allplaypctpct2019 <- get_allplaypctpct(2019)
 
+wkly_avg_std <- games_adj %>%
+  filter(Year == this_year) %>%
+  group_by(Week) %>%
+  summarise(PPG = mean(Adj_PF),
+            STD = sd(Adj_PF)) %>%
+  ungroup()
+
+replacement <- fp_data %>%
+  group_by(Week, Position) %>%
+  mutate(Rank = rank(-Points, ties.method = "first"))%>%
+  ungroup() %>%
+  mutate(Pos = Position) %>%
+  unite("PosRk", c(Pos, Rank), sep = "") %>%
+  filter(PosRk == "QB13" |
+           PosRk == "RB25" |
+           PosRk == "WR25" |
+           PosRk == "TE13" |
+           PosRk == "DST13") %>%
+  select(Position, Replacement = Points, Week)
+
+WAR <- merge(fp_data, replacement, by = c("Position", "Week"), all.x = TRUE)
+
+WAR <- WAR %>%
+  mutate(PVR = Points - Replacement)
+
+WAR <- merge(WAR, wkly_avg_std, by = "Week", all.x = TRUE)
+
+WAR <- WAR %>%
+  mutate(x = PVR + PPG) %>%
+  mutate(WAR = pnorm(x, PPG, STD) - .5) %>%
+  select(Player, Team, Week, Position, WAR, Value, draft_by)
+
 ```
 
 
@@ -969,18 +1062,65 @@ games_adj %>%
 ### Record Watch
 
 
-NFL PLAYERS
-===================================== 
+WAR {data-navmenu="PLAYER DATA" data-orientation=rows}
+=====================================  
 
-Column {.tabset}
----
+Column
+-------------------------------------
 
-### WAR Stats
-Test - shiny for viewing by position
+### Total WAR
+
+``` {r}
+WAR %>%
+  group_by(Player, Position) %>%
+  summarise(WAR = round(sum(WAR), digits = 2)) %>%
+  arrange(desc(WAR)) %>%
+  DT::datatable(options = list(
+    class = "display",
+    pageLength = 25
+  ))
+
+```
+
+### WAR vs Draft Value
+
+``` {r}
+WAR %>%
+  group_by(Player, Position, Value, draft_by) %>%
+  summarise(WAR = round(sum(WAR), digits = 2)) %>%
+  arrange(desc(WAR)) %>%
+  plot_ly() %>%
+  add_trace(type = "scatter", 
+          mode = "markers",
+          marker = list(size = 10),
+          x = ~Value, 
+          y = ~WAR, 
+          shape = ~draft_by,
+          name = ~draft_by,
+          text = ~Player)
+
+```
+
+
+DRAFT HISTORY {data-navmenu="PLAYER DATA" data-orientation=rows}
+=====================================  
+
+Column
+-------------------------------------
 
 ### Draft History
-Test - shiny for year?
 
+``` {r}
+draft %>%
+  select(-draft_by) %>%
+  arrange(desc(Year), desc(Value)) %>%
+  pivot_wider(names_from = Year, values_from = Value) %>%
+  DT::datatable(options = list(
+    class = "display",
+    pageLength = 50
+  ))
+
+```
 
 `r team01` {data-navmenu="FRANCHISES" data-orientation=rows}
 ===================================== 

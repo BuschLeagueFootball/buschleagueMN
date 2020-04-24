@@ -1,479 +1,183 @@
-library(tidyverse)
 
-ggl_sheet <- "https://docs.google.com/spreadsheets/d/e/2PACX-1vRPAR9n5KuCw3Mw_Ka48khDgK28rrnD4XujJ_tAadcA_kmbYjZF6ZFKX-7WGRHBlY47N8jP6G8JgG1k/pub?gid=0&single=true&output=csv"
 
-games_raw <- read_csv(ggl_sheet)
-
-games_raw$Team <- toupper(games_raw$Team)
-
-games_raw$Opponent <- toupper(games_raw$Opponent)
-
-games_raw <- games_raw %>%
-  mutate_all(~replace(., is.na(.), 0))
-
-games_raw$Team <- as.factor(games_raw$Team)
-
-write_csv(games_raw, "gamessource.csv")
-
-this_year <- max(games_raw$Year)
-
-games_ty <- games_raw %>%
-  filter(Year == this_year) %>%
-  arrange(desc(Week))
-
-games_allplay <- games_raw %>%
-  group_by(Week, Year) %>%
-  mutate(w_rank = ifelse(Year == 2008, rank(PF) / 4 + 1, rank(PF))) %>%
-  mutate(APW = as.integer(w_rank - 1)) %>%
-  mutate(l_rank = ifelse(Year == 2008, rank(-PF) / 4 + 1, rank(-PF))) %>%
-  mutate(APL = as.integer(l_rank - 1)) %>%
-  select(-w_rank, -l_rank)
-
-this_week <- games_ty[[1, 2]]
-
-ty_ppg <- games_raw %>%
-  group_by(Year) %>%
-  summarise(ppg = mean(PF)) %>%
-  filter(Year == this_year) %>%
-  pull(ppg)
-
-games_adj <- games_raw %>%
-  group_by(Year) %>%
-  mutate(ppg = mean(PF)) %>%
-  ungroup() %>%
-  mutate(Adj_PF = PF / ppg * ty_ppg) %>%
-  select(-ppg)
-
-team01 <- "ADAM HARTMAN"
-team02 <- "DAVID PIKUS"
-team03 <- "DERRIK HARTMAN"
-team04 <- "DREW VOGT"
-team05 <- "JOHN THOMPSON"
-team06 <- "MATT TRAEN"
-team07 <- "MAX APONTE"
-team08 <- "PHIL BASTRON"
-team09 <- "TIM GREVE"
-team10 <- "TIM LANG"
-team11 <- "TODD TRAEN"
-team12 <- "TREVOR SOUPIR"
-
-weeks=min(c(this_week, 12))
-leagueID = "205069"
-year = "2019"
-
-PositionDF =
-  tibble(
-    PositionId = c(1, 2, 3, 4, 5, 16),
-    Position = c(
-      "Quarterback",
-      "Running Back",
-      "Wide Receiver",
-      "Tight End",
-      "Kicker",
-      "Defense"
-    )
-  )
-
-PlayerSlotIDs = tibble(
-  playerrosterslot = c(0, 2, 4, 6, 16, 17, 20, 21, 23),
-  SlottedPosition = c(
-    "Quarterback",
-    "Running Back",
-    "Wide Receiver",
-    "Tight End",
-    "Defense",
-    "Kicker",
-    "Bench",
-    "IR",
-    "Flex"
-  )
-)
-
-teamiddf = tibble(
-  id = c(1:12),
-  team = c("NightTraen Reign", "Breaston Plants Inc", "Heartbreak Kid", "Dillon Panthers", "B1G HAUS", 
-           "Team Aponte", "Pre-Snap Adjustment", "Just Drew  It", "The Peppy Kids", "Soup du Jour", 
-           "Easy As A Bisi", "Hart attack")
-)
-
-### Function Pulls and Saves All Data
-gofunction = function(weeks = weeks, leagueID = leagueID, year = year){
-  
-  playerperformance = NULL
-  
-  for (i in 1:weeks) {
-    base = "http://fantasy.espn.com/apis/v3/games/ffl/seasons/"
-    mid = "/segments/0/leagues/"
-    tail = "?view=mMatchup&view=mMatchupScore&scoringPeriodId="
-    url = paste0(base, year, mid, leagueID, tail, i)
-    
-    ESPNGet <- httr::GET(url = url)
-    ESPNGet$status_code
-    ESPNRaw <- rawToChar(ESPNGet$content)
-    ESPNFromJSON <- jsonlite::fromJSON(ESPNRaw)
-    # ESPNFromJSON %>% listviewer::jsonedit()
-    
-    ## gets players on rosters for week n
-    players =
-      ESPNFromJSON$teams$roster$entries %>% map("playerPoolEntry") %>% map("player") %>%
-      map_df(magrittr::extract, c("id", "fullName", "defaultPositionId")) %>%
-      mutate(id = as.character(id))
-    
-    ## number of rows of stats for each player
-    observations =
-      ESPNFromJSON$teams$roster$entries %>% map("playerPoolEntry") %>% map("player") %>% map("stats")  %>%
-      flatten() %>% map_df( ~ count(.))
-    
-    playervec =
-      players %>%
-      mutate(observations = observations$n) %>%
-      uncount(observations)
-    
-    
-    ## projections and results for players withnames
-    playerperformanceshort =
-      ESPNFromJSON$teams$roster$entries %>% map("playerPoolEntry") %>% map("player") %>% map("stats")  %>%
-      flatten() %>%
-      map_df(
-        magrittr::extract,
-        c(
-          "scoringPeriodId",
-          "seasonId",
-          "statSourceId",
-          "statSplitTypeId",
-          "id",
-          "externalId",
-          "appliedTotal"
-        )
-      ) %>%
-      mutate(Player = playervec$fullName) %>%
-      mutate(PositionId = playervec$defaultPositionId) %>%
-      left_join(PositionDF) %>%
-      mutate(iteration = i)
-    
-    playerperformance = bind_rows(playerperformance, playerperformanceshort)
-  }
-  
-  playerperformance =
-    playerperformance %>%
-    select(-iteration, -seasonId) %>%
-    distinct()
-  
-  ## gets team names and records
-  PlayerTeamDF = NULL
-  
-  for (i in 1:weeks) {
-    base = "http://fantasy.espn.com/apis/v3/games/ffl/seasons/"
-    # year = "2019"
-    mid = "/segments/0/leagues/"
-    # leagueID = "205069"
-    tail10 = "?view=mMatchup&view=mMatchupScore&scoringPeriodId="
-    tail = "?view=mDraftDetail&view=mLiveScoring&view=mMatchupScore&view=mPendingTransactions&view=mPositionalRatings&view=mSettings&view=mTeam&view=modular&view=mNav&view=mMatchupScore&scoringPeriodId="
-    url = paste0(base, year, mid, leagueID, tail, i)
-    url10 = paste0(base, year, mid, leagueID, tail10, i)
-    
-    ESPNGet <- httr::GET(url = url)
-    ESPNGet$status_code
-    ESPNRaw <- rawToChar(ESPNGet$content)
-    ESPNFromJSON2 <- jsonlite::fromJSON(ESPNRaw)
-    # ESPNFromJSON2 %>% listviewer::jsonedit()
-    
-    Sys.sleep(time = runif(1, 2, 4))
-    
-    ESPNGet10 <- httr::GET(url = url10)
-    ESPNGet10$status_code
-    ESPNRaw10 <- rawToChar(ESPNGet10$content)
-    ESPNFromJSON10 <- jsonlite::fromJSON(ESPNRaw10)
-    # ESPNFromJSON10 %>% listviewer::jsonedit()
-    
-    playerrosterslot =
-      ESPNFromJSON10$teams$roster$entries %>%
-      map_df(`[`, "lineupSlotId")
-    
-    assignedpositions =
-      ESPNFromJSON10$teams$roster$entries %>%
-      map("playerPoolEntry") %>% map("player") %>%
-      map_df(magrittr::extract, c("id", "fullName", "defaultPositionId"))
-    
-    TeamPlayers =
-      ESPNFromJSON10$teams$roster$entries %>% map("playerPoolEntry") %>%
-      map_df( ~ count(.))
-    
-    PlayerTeamDFshort =
-      ESPNFromJSON2$teams %>% select(location, nickname, id) %>%
-      unite(Team, c(location, nickname)) %>%
-      mutate(TeamPlayers = TeamPlayers$n) %>%
-      uncount(TeamPlayers) %>%
-      mutate(Player = assignedpositions$fullName) %>%
-      select(-id) %>%
-      mutate(playerrosterslot = playerrosterslot$lineupSlotId) %>%
-      mutate(scoringPeriodId = i)
-    
-    PlayerTeamDF = bind_rows(PlayerTeamDF, PlayerTeamDFshort)
-    print(i)
-  }
-  
-  ## adds team info to player dataframe
-  
-  PlayerPerformance =
-    playerperformance %>%
-    left_join(PlayerTeamDF, by = c("Player", "scoringPeriodId")) %>%
-    as_tibble()
-  
-  WeeklyEstimates =
-    PlayerPerformance %>%
-    # as.data.frame() %>%
-    # filter(Team == "'R'm Chair_Quarterback") %>%
-    filter(nchar(externalId) > 4) %>%
-    mutate(statSourceId = if_else(statSourceId == 1, "Predicted", "Actual")) %>%
-    select(
-      scoringPeriodId,
-      statSourceId,
-      appliedTotal,
-      Player,
-      Position,
-      Team,
-      playerrosterslot
-    ) %>% distinct() %>% 
-    spread(statSourceId, appliedTotal) %>% 
-    arrange(Player) %>%
-    mutate(ActualMinusPredicted = Actual - Predicted) %>%
-    left_join(PlayerSlotIDs) %>%
-    # filter(scoringPeriodId==1)
-    # select(-playerrosterslot) %>%
-    mutate(Starter = if_else(SlottedPosition %in% c("Bench", "IR"), "Bench", "Starter"))
-  
-  
-  write_csv(WeeklyEstimates, "FantasyFootballData.csv")
-  
-  #### Gets standings
-  
-  base = "http://fantasy.espn.com/apis/v3/games/ffl/seasons/"
-  # year = "2019"
-  mid = "/segments/0/leagues/"
-  # leagueID = "205069"
-  tail = "?&view=mMatchupScore&scoringPeriodId="
-  url = paste0(base,year,mid,leagueID,tail)
-  
-  ESPNGet <- httr::GET(url = url)
-  ESPNGet$status_code
-  ESPNRaw <- rawToChar(ESPNGet$content)
-  ESPNFromJSON2 <- jsonlite::fromJSON(ESPNRaw)
-  # ESPNFromJSON2 %>% listviewer::jsonedit()
-  
-  season1 = tibble(
-    awayid = ESPNFromJSON2$schedule$away$teamId,
-    awaypoints = ESPNFromJSON2$schedule$away$totalPoints,
-    homeid = ESPNFromJSON2$schedule$home$teamId,
-    homepoints = ESPNFromJSON2$schedule$home$totalPoints,
-    winner = ESPNFromJSON2$schedule$winner,
-    weekID = ESPNFromJSON2$schedule$matchupPeriodId
-  ) %>%
-    left_join(teamiddf, by = c("awayid"="id")) %>%
-    rename(AwayTeam = team) %>%
-    left_join(teamiddf, by = c("homeid"="id")) %>%
-    rename(HomeTeam = team) %>%
-    mutate(winner = if_else(awaypoints>homepoints,AwayTeam,HomeTeam))
-  
-  
-  season =
-    season1 %>% select(-awayid,-homeid) %>%
-    gather(Location, Points, -winner, -weekID, -AwayTeam,-HomeTeam) %>%
-    arrange(weekID) %>%
-    group_by(weekID) %>%
-    mutate(rank = rank(-Points)) %>%
-    mutate(EWETL = rank-1) %>%
-    mutate(EWETW = 12-rank) %>%
-    group_by()
-  
-  season %>%
-    write_csv("weekbyweekresults.csv")
-  
-  season1 %>%
-    write_csv("weekbyweekresultssimple.csv")
-  
-}
-
-gofunction(weeks = weeks, leagueID = leagueID, year = year)
-
-# CLEANING ROSTER DATA CHECK
-
-war_calc %>% filter(Week == 1) %>% group_by(Franchise) %>% count()
-war_calc %>% filter(Week == 1) %>% group_by(Franchise) %>% summarise(spent = sum(Value))
-draft_ty %>% filter(Franchise == "TIM GREVE")
-war_calc %>% filter(Franchise == "TIM GREVE") %>% filter(Pos == "Quarter") %>% select(Player, Position, Value, Week) %>% arrange(desc(Value))
-sort(unique(war_calc$Player))
-
+##############################################################################
+# FOR SEASON AND GAME RECORDS WE CAN JUST BIND LEADERBOARD AND FILTER FOR 
+# ANY RECORDS THIS YEAR WHICH RANK IN THE TOP 2 OR 3
 #
-# GETTING PTS AND EXPECTED
-#
+# FOR CAREER WE NEED TO COMPARE CAREER RANK FROM ONE WEEK TO THE NEXT
+##############################################################################
 
-espn_pred <- rosterdata %>%
-  filter(Week < 13) %>%
-  filter(Starter == "Starter") %>%
-  group_by(owner) %>%
-  summarise(Predicted = sum(Predicted, na.rm = TRUE)) %>%
+this_year_week <- this_year + (this_week / 100)
+
+record_test1 <- games_raw %>%
+  mutate(year_week = Year + (Week / 100)) %>%
+  filter(year_week < this_year_week) %>%
+  filter(Year > 2012) %>%
+  group_by(Team) %>%
+  filter(n() > 23) %>%
   ungroup() %>%
-  rename(Team = owner) %>%
-  filter(!is.na(Team))
+  mutate(w_l = as.numeric(as.logical(PF > PA))) %>%
+  group_by(Team) %>%
+  summarise(Record = "Most Wins", 
+            n = sum(w_l), 
+            Loss = sum(w_l == 0), 
+            Pct = as.integer(n / (n + Loss) * 1000)) %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  select(Record, n, Team, grp)
 
-espn_actual <- rosterdata %>%
-  filter(Week < 13) %>%
-  filter(Starter == "Starter") %>%
-  group_by(owner) %>%
-  summarise(Actual = sum(Actual, na.rm = TRUE)) %>%
+record_test2 <- games_raw %>%
+  filter(Year > 2012) %>%
+  group_by(Team) %>%
+  filter(n() > 23) %>%
   ungroup() %>%
-  rename(Team = owner)
+  mutate(w_l = as.numeric(as.logical(PF > PA))) %>%
+  group_by(Team) %>%
+  summarise(Record = "Most Wins", 
+            n = sum(w_l), 
+            Loss = sum(w_l == 0), 
+            Pct = as.integer(n / (n + Loss) * 1000)) %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  select(Record, n, Team, grp)
 
-#
-# GETTING OPTIMAL
-#
+record_test3 <- full_join(record_test1, record_test2, by = c("Record", "Team"))
 
-ranked <- rosterdata %>%
-  select(Week, Player, Position, owner, Actual) %>%
-  group_by(owner, Position, Week) %>%
-  mutate(Rank = rank(-Actual, ties.method = "first")) %>%
-  arrange(owner) %>%
-  filter(!is.na(owner))
+record_test3 %>%
+  filter(grp.y == 1) %>%
+  mutate(new_record_check = as.logical(grp.x != grp.y))
 
-rankedqbs <- ranked %>%
-  filter(Position == "Quarterback") %>%
-  filter(Rank == 1) %>%
-  mutate(PosOrder = 1)
-
-rankedrbs <- ranked %>%
-  filter(Position == "Running Back") %>%
-  filter(Rank <= 2) %>%
-  mutate(PosOrder = 2)
-
-rankedwrs <- ranked %>%
-  filter(Position == "Wide Receiver") %>%
-  filter(Rank <= 2) %>%
-  mutate(PosOrder = 3)
-
-rankedtes <- ranked %>%
-  filter(Position == "Tight End") %>%
-  filter(Rank <= 1) %>%
-  mutate(PosOrder = 4)
-
-rankeddef <- ranked %>%
-  filter(Position == "Defense") %>%
-  filter(Rank <= 1) %>%
-  mutate(PosOrder = 6)
-
-rankedfl <- ranked %>%
-  anti_join(bind_rows(rankedrbs, 
-                      rankedwrs, 
-                      rankedtes)) %>%
-  filter(Position %in% c("Running Back", 
-                         "Wide Receiver", 
-                         "Tight End")) %>%
-  group_by(Week, owner) %>%
-  mutate(Rank = rank(-Actual, ties.method = "first")) %>%
-  filter(Rank == 1) %>%
-  mutate(Position = "Flex") %>%
-  mutate(PosOrder = 5)
-
-optimallineup <- bind_rows(rankedqbs, 
-                           rankedrbs, 
-                           rankedwrs, 
-                           rankedtes, 
-                           rankedfl, 
-                           rankeddef) %>%
-  arrange(owner,Week,PosOrder)
-
-optimal_total <- optimallineup %>%
-  group_by(owner) %>%
-  summarise(Optimal = sum(Actual)) %>%
+at_wins <- games_raw %>%
+  filter(Year > 2012) %>%
+  group_by(Team) %>%
+  filter(n() > 23) %>%
   ungroup() %>%
-  rename(Team = owner)
+  mutate(w_l = as.numeric(as.logical(PF > PA))) %>%
+  group_by(Team) %>%
+  summarise(Record = "Most Wins", 
+            n = sum(w_l), 
+            Loss = sum(w_l == 0), 
+            Pct = as.integer(n / (n + Loss) * 1000)) %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
+  select(Record, n, Team)
 
-pts_vs_opt <- inner_join(espn_actual, optimal_total) %>% 
-  arrange(desc(Actual))
+at_w_pct <- games_raw %>%
+  filter(Year > 2012) %>%
+  group_by(Team) %>%
+  filter(n() > 23) %>%
+  ungroup() %>%
+  mutate(w_l = as.numeric(as.logical(PF > PA))) %>%
+  group_by(Team) %>%
+  summarise(Record = "Win %", 
+            Win = sum(w_l), 
+            Loss = sum(w_l == 0), 
+            n = as.integer(Win / (Win + Loss) * 1000)) %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
+  select(Record, n, Team)
 
-pts_vs_opt$Team <- factor(pts_vs_opt$Team, levels = pts_vs_opt$Team[order(pts_vs_opt$Actual, decreasing = TRUE)])
-espn_pred$Team <- factor(espn_pred$Team, levels = pts_vs_opt$Team[order(pts_vs_opt$Actual, decreasing = TRUE)])
+at_po_appear <- games_raw %>%
+  select(Year, Team, Type) %>%
+  filter(Year > 2012) %>%
+  filter(Type == "Playoffs") %>%
+  distinct() %>%
+  count(Team) %>%
+  filter(n > 1) %>%
+  mutate(Record = "Playoff Appearances") %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
+  select(Record, n, Team)
 
-pts_vs_opt <- pts_vs_opt %>%
-  pivot_longer(-Team, names_to = "category", values_to = "n")
+at_playoff_w <- games_raw %>%
+  filter(Type != "Reg") %>%
+  filter(Year > 2012) %>%
+  group_by(Team) %>%
+  filter(n() > 2) %>%
+  ungroup() %>%
+  mutate(w_l = as.numeric(as.logical(PF > PA))) %>%
+  group_by(Team) %>%
+  summarise(Record = "Playoff Wins", 
+            n = sum(w_l), 
+            Loss = sum(w_l == 0), 
+            Pct = as.integer(n / (n + Loss) * 1000)) %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
+  select(Record, n, Team)  
 
-ggplot() +
-  geom_line(pts_vs_opt, 
-            mapping = aes(x = Team, y = n), 
-            linetype = "dashed", 
-            size = .5) + 
-  geom_point(pts_vs_opt, 
-             mapping = aes(x = Team, y = n, color = category), 
-             size = 4) +
-  geom_point(espn_pred, 
-             mapping = aes(x = Team, y = Predicted, color = "ESPN Pred"), 
-             size = 4,
-             shape = 1) +
-  scale_color_manual("Legend", values = c("black", "orange", "grey")) +
-  labs(title = "Total Pts vs ESPN Preds & Optimal Lineups",
-       subtitle = "Sorted by actual points scored (black)", 
-       caption = "*black line = spread between actual pts and most possible pts") +
-  ylab("Points") +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle = 90))
-  
-games_adj %>%
-  inner_join(games_allplay, by = colnames(games_raw)) %>%
+at_bb_appear <- games_raw %>%
+  select(Year, Team, Type) %>%
+  filter(Year > 2012) %>%
+  filter(Type == "Championship") %>%
+  distinct() %>%
+  count(Team) %>%
+  filter(n > 1) %>%
+  mutate(Record = "Busch Bowl Appearances") %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
+  select(Record, n, Team)
+
+at_bb_w <- games_raw %>%
+  filter(Type == "Championship") %>%
+  filter(Year > 2012) %>%
+  group_by(Team) %>%
+  filter(n() > 2) %>%
+  ungroup() %>%
+  mutate(w_l = as.numeric(as.logical(PF > PA))) %>%
+  group_by(Team) %>%
+  summarise(Record = "Busch Bowl Wins", 
+            n = sum(w_l), 
+            Loss = sum(w_l == 0), 
+            Pct = as.integer(n / (n + Loss) * 1000)) %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
+  select(Record, n, Team) 
+
+at_apw <- games_allplay %>%
   filter(Type == "Reg") %>%
   filter(Year > 2012) %>%
-  group_by(Year) %>%
-  mutate(avgpts = mean(PF)) %>%
+  group_by(Team) %>%
+  summarise(Record = "All Play Wins", 
+            n = as.integer(sum(APW)), 
+            APL = as.integer(sum(APL))) %>%
+  mutate(Pct = as.integer(n / (n + APL) * 1000)) %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
+  select(Record, n, Team)
+
+at_apw_pct <- games_allplay %>%
+  filter(Type == "Reg") %>%
+  filter(Year > 2012) %>%
+  group_by(Team) %>%
+  summarise(Record = "All Play W%", 
+            APW = as.integer(sum(APW)), 
+            APL = as.integer(sum(APL))) %>%
+  filter(APW > 150) %>%
+  mutate(n = as.integer(APW / (APW + APL) * 1000)) %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
+  select(Record, n, Team)
+
+at_ppg <- games_adj %>%
+  group_by(Team) %>%
+  filter(n() > 23) %>%
   ungroup() %>%
-  mutate(w_l = as.numeric(PF > PA),
-         sw = as.numeric(APW > APL),
-         WxWk = w_l * Week / 3,
-         APWxWk = APW * Week / 25,
-         PtsvAvgxWk = (PF - avgpts) * (Week / 100),
-         SwxWk = sw * Week / 3,
-         WkScore = WxWk + APWxWk + PtsvAvgxWk + SwxWk) %>%
-  group_by(Year, Team) %>%
-  summarise(apw_ttl = sum(APW), 
-            pts_ttl = as.integer(sum(PF)), 
-            SumScore = as.integer(sum(WkScore))) %>%
-  mutate(apwrk = rank(apw_ttl), 
-         ptsrk = rank(pts_ttl),
-         PowerScore = as.integer(SumScore + apwrk + ptsrk)) %>%
-  arrange(desc(PowerScore)) %>%
-  head(10) %>%
-  select(Team, PowerScore, APW = apw_ttl, Pts = pts_ttl, RScore = SumScore)
+  filter(Year > 2012) %>%
+  group_by(Team) %>%
+  summarise(Record = "PPG", 
+            n = as.integer(mean(Adj_PF))) %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
+  select(Record, n, Team)
 
-h2h <- games_raw %>%
-  mutate(win = as.numeric(PF > PA)) %>%
-  mutate(loss = as.numeric(PA > PF)) %>%
-  filter(Team == team01 |
-           Team == team02 |
-           Team == team03 |
-           Team == team04 |
-           Team == team05 |
-           Team == team06 |
-           Team == team07 |
-           Team == team08 |
-           Team == team09 |
-           Team == team10 |
-           Team == team11 |
-           Team == team12) %>%
-  group_by(Team, Opponent) %>%
-  summarise(W = sum(win), L = sum(loss)) %>%
-  unite("W/L", c(W, L), sep = "-") %>%
-  pivot_wider(names_from = Opponent, values_from = "W/L") %>%
-  select(Team, 
-         team01, 
-         team02,
-         team03,
-         team04,
-         team05,
-         team06,
-         team07,
-         team08,
-         team09,
-         team10,
-         team12) %>%
-  kable() %>%
-  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), position = "center")
+rbind(at_wins, at_w_pct, at_po_appear, at_playoff_w, at_bb_appear, at_bb_w, at_apw, at_apw_pct, at_ppg)
 
-              
+
+##############################################################################
+# SCRAPE PLAYER STATS FROM FANTASYPROS.COM AND CLEAN NAMES SO THEY MATCH W/ ESPN 
+##############################################################################
+
+
+
+fp_errors <- test1 %>%
+  filter(is.na(Team))
+
+fp_data %>% filter(Team == "DET") %>% filter(Position == "WR")
