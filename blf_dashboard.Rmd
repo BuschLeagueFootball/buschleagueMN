@@ -1,0 +1,4168 @@
+---
+title: "Busch League Reference"
+output: 
+  flexdashboard::flex_dashboard:
+    logo: images/blf_logo_icon.png
+    orientation: columns
+    vertical_layout: scroll
+---
+
+```{r setup, include=FALSE}
+
+library(flexdashboard)
+library(tidyverse)
+library(knitr)
+library(kableExtra)
+library(plotly)
+library(rvest)
+
+##############################################################################
+#
+# TEAM ASSIGNMENTS, LINKING, CLEANING
+#
+##############################################################################
+
+team01 <- "ADAM HARTMAN"
+team02 <- "DAVID PIKUS"
+team03 <- "DERRIK HARTMAN"
+team04 <- "DREW VOGT"
+team05 <- "JOHN THOMPSON"
+team06 <- "MATT TRAEN"
+team07 <- "MAX APONTE"
+team08 <- "PHIL BASTRON"
+team09 <- "TIM GREVE"
+team10 <- "TIM LANG"
+team11 <- "TODD TRAEN"
+team12 <- "TREVOR SOUPIR"
+
+active_teams <- c(team01, team02, team03, team04, team05, team06, team07, team08, team09, team10, team12) # no Todd until 2020 games are played
+
+#
+# NEED TO UPDATE WITH NEW TEAM NAMES AND SWITCH JEFF OUT WITH TODD
+#
+
+teamdf <- tibble(
+  Team = c("NightTraen_Reign", 
+           "Breaston_Plants Inc", 
+           "Heartbreak_Kid", 
+           "DILLON_PANTHERS", 
+           "B1G_HAUS", 
+           "Team_Aponte", 
+           "Pre-Snap_Adjustment", 
+           "Just Drew _It", 
+           "The_Peppy Kids", 
+           "Soup_du Jour", 
+           "Easy As_A Bisi", 
+           "Hart_attack"),
+  owner = c("MATT TRAEN", 
+            "TIM GREVE", 
+            "TIM LANG", 
+            "JEFF KING", 
+            "DAVID PIKUS", 
+            "MAX APONTE", 
+            "JOHN THOMPSON", 
+            "DREW VOGT", 
+            "PHIL BASTRON", 
+            "TREVOR SOUPIR", 
+            "DERRIK HARTMAN", 
+            "ADAM HARTMAN"))
+
+##############################################################################
+#
+# SOURCE DATA
+#
+##############################################################################
+
+talking_busch <- "https://youtu.be/J0CQxOk39DQ"
+
+ggl_sheet <- "https://docs.google.com/spreadsheets/d/e/2PACX-1vRPAR9n5KuCw3Mw_Ka48khDgK28rrnD4XujJ_tAadcA_kmbYjZF6ZFKX-7WGRHBlY47N8jP6G8JgG1k/pub?gid=0&single=true&output=csv"
+
+ggl_sheet_draft <- "https://docs.google.com/spreadsheets/d/e/2PACX-1vT7vcwUpOdVzcH6rRwaZWF-Z7mfmCF9rjkBoYNmj56kbho4FI9SB5hBUlGZcrQOdaHwLqIoo1sTYEr0/pub?gid=0&single=true&output=csv"
+
+##############################################################################
+#
+# GAMES CLEANING
+#
+##############################################################################
+
+games_raw <- read_csv(ggl_sheet)
+
+games_raw$Team <- toupper(games_raw$Team)
+
+games_raw$Opponent <- toupper(games_raw$Opponent)
+
+games_raw <- games_raw %>%
+  mutate_all(~replace(., is.na(.), 0))
+
+games_raw$Team <- as.factor(games_raw$Team)
+
+write_csv(games_raw, "data/gamessource.csv")
+
+this_year <- max(games_raw$Year)
+
+games_ty <- games_raw %>%
+  filter(Year == this_year) %>%
+  arrange(desc(Week))
+
+this_week <- games_ty[[1, 2]]
+
+##############################################################################
+#
+# DRAFT CLEANING
+#
+##############################################################################
+
+draft <- read_csv(ggl_sheet_draft)
+
+draft$Player <- toupper(draft$Player)
+
+draft$Franchise <- toupper(draft$Franchise)
+
+draft$Value <- parse_number(draft$Value)
+
+draft <- draft %>%
+  rename(draft_by = Franchise, 
+         Position = Pos)
+
+draft$Player <- gsub("\\s$", "", draft$Player)
+draft$Player <- gsub(",\\s.+$", "", draft$Player)
+draft$Player <- gsub("\\s[A-Z]{2,3}$", "", draft$Player)
+draft$Player <- gsub("(D/ST)\\s(D/ST)\\s?", "D/ST", draft$Player)
+draft$Player <- gsub("DARRELL HENDERSON", "DARRELL HENDERSON JR.", draft$Player)
+
+draft$Position <- gsub("\\s?QB\\s?", "Quarterback", draft$Position)
+draft$Position <- gsub("\\s?RB\\s?", "Running Back", draft$Position)
+draft$Position <- gsub("\\s?WR\\s?", "Wide Receiver", draft$Position)
+draft$Position <- gsub("\\s?TE\\s?", "Tight End", draft$Position)
+draft$Position <- gsub("\\s?ST\\s?", "Defense", draft$Position)
+
+draft_ty <- draft %>%
+  filter(Year == this_year)
+
+##############################################################################
+#
+# PLAYER DATA CLEANING
+#
+##############################################################################
+
+rosterdata <- read_csv("data/FantasyFootballData.csv")
+
+rosterdata$Player <- toupper(rosterdata$Player)
+
+rosterdata <- left_join(rosterdata, teamdf)
+
+rosterdata <- rosterdata %>%
+  select(-playerrosterslot)
+
+rosterdata <- rosterdata %>%
+  rename(Week = scoringPeriodId, d_Pred = ActualMinusPredicted)
+
+rosterdata$Predicted <- round(rosterdata$Predicted, 2)
+
+rosterdata$d_Pred <- round(rosterdata$d_Pred, 2)
+
+
+##############################################################################
+#
+# FANTASY PROS WEEKLY SCORING DATA AND CLEANING
+#
+##############################################################################
+
+base <- "https://www.fantasypros.com/nfl/reports/leaders/?year="
+mid <- "&start="
+tail <- "&end="
+
+fp_list <- NULL
+
+for (i in 1:this_week) {
+  
+  url <- paste0(base, this_year, mid, i, tail, i)
+  
+  fp_com <- read_html(url)
+  
+  fp_data <-html_table(fp_com)[[1]] %>%
+    as_tibble()
+  
+  fp_data$Week <- i
+  
+  fp_list[[i]] <- fp_data
+  
+}
+
+fp_data = do.call(rbind, fp_list)
+
+fp_data <- fp_data %>%
+  select(-Rank, -Games, -Avg)
+
+fp_data$Player <- toupper(fp_data$Player)
+
+fp_data$Player <- gsub("MITCH TRUBISKY", "MITCHELL TRUBISKY", fp_data$Player)
+fp_data$Player <- gsub("D.J. MOORE", "DJ MOORE", fp_data$Player)
+fp_data$Player <- gsub("D.K. METCALF", "DK METCALF", fp_data$Player)
+fp_data$Player <- gsub("MARVIN JONES", "MARVIN JONES JR.", fp_data$Player)
+fp_data$Player <- gsub("WILL FULLER", "WILL FULLER V", fp_data$Player)
+fp_data$Player <- gsub("DARRELL HENDERSON", "DARRELL HENDERSON JR.", fp_data$Player)
+fp_data$Player <- gsub("DUKE JOHNSON", "DUKE JOHNSON JR.", fp_data$Player)
+fp_data$Player <- gsub("TODD GURLEY", "TODD GURLEY II", fp_data$Player)
+
+
+fp_data <- merge(fp_data, draft_ty, by = "Player", all.x = TRUE)
+
+fp_data$Value <- fp_data$Value %>%
+  replace_na(0)
+
+fp_data$draft_by <- fp_data$draft_by %>%
+  replace_na("undrafted")
+
+fp_data <- fp_data %>%
+  select(-Position.y, -Year) %>%
+  rename(Position = Position.x)
+
+
+##############################################################################
+#
+# CUSTOM FUNCTIONS
+#
+##############################################################################
+
+get_founded <- function(teamid) {
+  games_raw %>% 
+    filter(Team == teamid) %>% 
+    filter(Year == min(Year)) %>% 
+    filter(Week == 1) %>% 
+    pull(Year)
+}
+
+get_buschbowls <- function(teamid) {
+  games_raw %>% 
+    filter(Team == teamid) %>% 
+    filter(Type == "Championship") %>% 
+    mutate(w_l = as.numeric(as.logical(PF > PA))) %>%
+    summarise(champs = sum(w_l)) %>%
+    pull(champs)
+}
+
+get_po_appear <- function(teamid) {
+  games_raw %>% 
+    filter(Team == teamid) %>% 
+    filter(Type == "Playoffs") %>%
+    group_by(Year) %>%
+    summarize(mean(PF)) %>%
+    nrow()
+}
+
+get_winning_seasons <- function(teamid) {
+  games_raw %>% 
+    filter(Team == teamid) %>% 
+    mutate(w_l = as.numeric(as.logical(PF > PA))) %>%
+    group_by(Year) %>%
+    summarise(Win = sum(w_l), Loss = sum(w_l == 0), 
+            Pct = as.double(Win / (Win + Loss))) %>%
+    mutate(over500 = as.numeric(as.logical(Pct > .5))) %>%
+    summarise(winning_seasons = sum(over500)) %>%
+    pull(winning_seasons)
+}
+
+get_at_wpct <- function(teamid) {
+  games_raw %>%
+    filter(Team == teamid) %>%
+    mutate(w_l = as.numeric(as.logical(PF > PA))) %>%
+    summarise(Win = sum(w_l), Loss = sum(w_l == 0), Pct = as.integer(Win / (Win + Loss) * 1000)) %>%
+    pull(Pct)
+}
+
+get_at_ppg <- function(teamid) {
+  games_adj %>%
+    filter(Team == teamid) %>%
+    summarise(PPG = round(mean(Adj_PF), digits = 2)) %>%
+    pull(PPG) %>%
+    as.integer()
+}
+
+get_12t_wpct <- function(teamid) {
+  games_raw %>%
+    filter(Team == teamid) %>%
+    filter(Year > 2012) %>%
+    mutate(w_l = as.numeric(as.logical(PF > PA))) %>%
+    summarise(Win = sum(w_l), Loss = sum(w_l == 0), Pct = as.integer(Win / (Win + Loss) * 1000)) %>%
+    pull(Pct)
+}
+
+get_12t_ppg <- function(teamid) {
+  games_adj %>%
+    filter(Team == teamid) %>%
+    filter(Year > 2012) %>%
+    summarise(PPG = round(mean(Adj_PF), digits = 2)) %>%
+    pull(PPG) %>%
+    as.integer()
+}
+
+get_alltime_stats <- function(teamid) {
+  Reg_season <- games_adj %>%
+    filter(Type == "Reg") %>%
+    mutate(w_l = as.numeric(PF > PA)) %>%
+    group_by(Team, .drop = FALSE) %>%
+    summarise(W = sum(w_l), 
+            L = sum(w_l == 0), 
+            Pct = as.integer(W / (W + L) * 1000), 
+            PPG = round(mean(Adj_PF), digits = 2)) %>%
+    filter(Team == teamid)
+
+
+  Playoffs <- games_adj %>%
+    filter(Type != "Reg") %>%
+    mutate(w_l = as.numeric(PF > PA)) %>%
+    group_by(Team, .drop = FALSE) %>%
+    summarise(W = sum(w_l), 
+            L = sum(w_l == 0), 
+            Pct = as.integer(W / (W + L) * 1000), 
+            PPG = round(mean(Adj_PF), digits = 2)) %>%
+    filter(Team == teamid)
+
+  BuschBowls <- games_adj %>%
+    filter(Type == "Championship") %>%
+    mutate(w_l = as.numeric(PF > PA)) %>%
+    group_by(Team, .drop = FALSE) %>%
+    summarise(W = sum(w_l), 
+            L = sum(w_l == 0), 
+            Pct = as.integer(W / (W + L) * 1000), 
+            PPG = round(mean(Adj_PF), digits = 2)) %>%
+    filter(Team == teamid)
+
+  All_Play <- games_allplay %>%
+    mutate(w_l = as.numeric(PF > PA)) %>%
+    group_by(Team, .drop = FALSE) %>%
+    summarise(APW = sum(APW), 
+            APL = sum(APL), 
+            Pct = as.integer(APW / (APW + APL) * 1000)) %>%
+    filter(Team == teamid)
+
+  Reg_season %>%
+    inner_join(Playoffs, by = "Team") %>%
+    inner_join(BuschBowls, by = "Team") %>%
+    inner_join(All_Play, by = "Team") %>%
+    rename(R.W = W.x,
+         R.L = L.x,
+         "R.%" = Pct.x,
+         R.PPG = PPG.x,
+         PO.W = W.y,
+         PO.L = L.y,
+         "PO.%" = Pct.y,
+         PO.PPG = PPG.y,
+         BB.W = W,
+         BB.L = L,
+         BB.Pct = Pct.x.x,
+         BB.PPG = PPG,
+         "APW%" = Pct.y.y) %>%
+    kable() %>%
+    kable_styling() %>%
+    add_header_above(c(" ", "Regular Season" = 4, "Playoffs" = 4, "Busch Bowls" = 4, "All Play" = 3))
+}
+
+get_12t_stats <- function(teamid) {
+  Reg_season <- games_adj %>%
+    filter(Year > 2012) %>%
+    filter(Type == "Reg") %>%
+    mutate(w_l = as.numeric(PF > PA)) %>%
+    group_by(Team, .drop = FALSE) %>%
+    summarise(W = sum(w_l), 
+            L = sum(w_l == 0), 
+            Pct = as.integer(W / (W + L) * 1000), 
+            PPG = round(mean(Adj_PF), digits = 2)) %>%
+    filter(Team == teamid)
+
+  Playoffs <- games_adj %>%
+    filter(Year > 2012) %>%
+    filter(Type != "Reg") %>%
+    mutate(w_l = as.numeric(PF > PA)) %>%
+    group_by(Team, .drop = FALSE) %>%
+    summarise(W = sum(w_l), 
+            L = sum(w_l == 0), 
+            Pct = as.integer(W / (W + L) * 1000), 
+            PPG = round(mean(Adj_PF), digits = 2)) %>%
+    filter(Team == teamid)
+
+  BuschBowls <- games_adj %>%
+    filter(Year > 2012) %>%
+    filter(Type == "Championship") %>%
+    mutate(w_l = as.numeric(PF > PA)) %>%
+    group_by(Team, .drop = FALSE) %>%
+    summarise(W = sum(w_l), 
+            L = sum(w_l == 0), 
+            Pct = as.integer(W / (W + L) * 1000), 
+            PPG = round(mean(Adj_PF), digits = 2)) %>%
+    filter(Team == teamid)
+
+  All_Play <- games_allplay %>%
+    filter(Team == teamid) %>%
+    filter(Year > 2012) %>%
+    mutate(w_l = as.numeric(PF > PA)) %>%
+    group_by(Team, .drop = FALSE) %>%
+    summarise(APW = sum(APW), 
+            APL = sum(APL), 
+            Pct = as.integer(APW / (APW + APL) * 1000))
+
+  Reg_season %>%
+    inner_join(Playoffs, by = "Team") %>%
+    inner_join(BuschBowls, by = "Team") %>%
+    inner_join(All_Play, by = "Team") %>%
+    rename(R.W = W.x,
+         R.L = L.x,
+         "R.%" = Pct.x,
+         R.PPG = PPG.x,
+         PO.W = W.y,
+         PO.L = L.y,
+         "PO.%" = Pct.y,
+         PO.PPG = PPG.y,
+         BB.W = W,
+         BB.L = L,
+         BB.Pct = Pct.x.x,
+         BB.PPG = PPG,
+         "APW%" = Pct.y.y) %>%
+    kable() %>%
+    kable_styling() %>%
+    add_header_above(c(" ", "Regular Season" = 4, "Playoffs" = 4, "Busch Bowls" = 4, "All Play" = 3))
+}
+
+get_season_summary <- function(teamid) {
+  Reg_season <- games_adj %>%
+    filter(Type == "Reg") %>%
+    mutate(w_l = as.numeric(PF > PA)) %>%
+    group_by(Year, Team, .drop = FALSE) %>%
+    summarise(W = sum(w_l), 
+            L = sum(w_l == 0), 
+            Pct = as.integer(W / (W + L) * 1000), 
+            PPG = round(mean(Adj_PF), digits = 2)) %>%
+    filter(Team == teamid)
+
+  Playoffs <- games_adj %>%
+    filter(Type != "Reg") %>%
+    mutate(w_l = as.numeric(PF > PA)) %>%
+    group_by(Year, Team, .drop = FALSE) %>%
+    summarise(W = sum(w_l), 
+            L = sum(w_l == 0), 
+            Pct = as.integer(W / (W + L) * 1000), 
+            PPG = round(mean(Adj_PF), digits = 2)) %>%
+    filter(Team == teamid)
+
+  BuschBowls <- games_adj %>%
+    filter(Type == "Championship") %>%
+    mutate(w_l = as.numeric(PF > PA)) %>%
+    group_by(Year, Team, .drop = FALSE) %>%
+    summarise(W = sum(w_l), 
+            L = sum(w_l == 0), 
+            Pct = as.integer(W / (W + L) * 1000), 
+            PPG = round(mean(Adj_PF), digits = 2)) %>%
+    filter(Team == teamid)
+
+  All_Play <- games_allplay %>%
+    mutate(w_l = as.numeric(PF > PA)) %>%
+    group_by(Year, Team, .drop = FALSE) %>%
+    summarise(APW = sum(APW), 
+            APL = sum(APL), 
+            Pct = as.integer(APW / (APW + APL) * 1000)) %>%
+    filter(Team == teamid)
+
+  Reg_season %>%
+    inner_join(Playoffs, by = c("Year", "Team")) %>%
+    inner_join(BuschBowls, by = c("Year", "Team")) %>%
+    inner_join(All_Play, by = c("Year", "Team")) %>%
+    rename(R.W = W.x,
+         R.L = L.x,
+         "R.%" = Pct.x,
+         R.PPG = PPG.x,
+         PO.W = W.y,
+         PO.L = L.y,
+         "PO.%" = Pct.y,
+         PO.PPG = PPG.y,
+         BB.W = W,
+         BB.L = L,
+         BB.Pct = Pct.x.x,
+         BB.PPG = PPG,
+         "APW%" = Pct.y.y) %>%
+    filter(Year > get_founded(teamid) - 1) %>%
+    kable() %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed")) %>%
+    add_header_above(c(" " = 2, "Regular Season" = 4, "Playoffs" = 4, "Busch Bowls" = 4, "All Play" = 3))
+}
+
+get_game_log <- function(teamid) {
+  games_adj %>%
+    filter(Team == teamid) %>%
+    mutate("W/L" = as.numeric(PF > PA)) %>%
+    DT::datatable(options = list(
+    class = "display",
+    pageLength = 50
+  ))
+}
+
+get_champion <- function(yearid) {
+  games_raw %>%
+    filter(Type == "Championship") %>%
+    mutate(w_l = as.numeric(PF > PA)) %>%
+    filter(w_l == 1) %>%
+    filter(Year == yearid) %>%
+    pull(Team)
+}
+
+get_runnerup <- function(yearid) {
+  games_raw %>%
+    filter(Type == "Championship") %>%
+    mutate(w_l = as.numeric(PF > PA)) %>%
+    filter(w_l == 0) %>%
+    filter(Year == yearid) %>%
+    pull(Team)
+}
+
+get_mostptsteam <- function(yearid) {
+  games_raw %>%
+    filter(Type == "Reg") %>%
+    group_by(Team, Year) %>%
+    summarise(tpts = sum(PF)) %>%
+    filter(Year == yearid) %>%
+    arrange(desc(tpts)) %>%
+    head(1) %>%
+    pull(Team)
+}
+
+get_mostptspts <- function(yearid) {
+  games_raw %>%
+    filter(Type == "Reg") %>%
+    group_by(Team, Year) %>%
+    summarise(tpts = sum(PF)) %>%
+    filter(Year == yearid) %>%
+    arrange(desc(tpts)) %>%
+    head(1) %>%
+    pull(tpts)
+}
+
+get_allplaypctteam <- function(yearid) {
+  games_allplay %>%
+    filter(Year == yearid) %>%
+    filter(Type == "Reg") %>%
+    group_by(Team) %>%
+    summarise(APW = as.integer(sum(APW)), APL = as.integer(sum(APL))) %>%
+    mutate(Pct = as.integer(APW / (APW + APL) * 1000)) %>%
+    arrange(desc(Pct)) %>%
+    head(1) %>%
+    pull(Team)
+}
+
+get_allplaypctpct <- function(yearid) {
+  games_allplay %>%
+    filter(Year == yearid) %>%
+    filter(Type == "Reg") %>%
+    group_by(Team) %>%
+    summarise(APW = as.integer(sum(APW)), APL = as.integer(sum(APL))) %>%
+    mutate(Pct = as.integer(APW / (APW + APL) * 1000)) %>%
+    arrange(desc(Pct)) %>%
+    head(1) %>%
+    pull(Pct)
+}
+
+get_standings <- function(yearid) {
+  results <- games_raw %>%
+    filter(Year == yearid) %>%
+    mutate(w_l = as.numeric(PF > PA)) %>%
+    group_by(Team, Type) %>%
+    summarise(W = sum(w_l), 
+            L = sum(w_l == 0), 
+            Pct = as.integer(W / (W + L) * 1000), 
+            PPG = mean(PF)) %>%
+    pivot_wider(names_from = Type, values_from = c(W, L, Pct, PPG), names_sep = ".")
+
+  All_Play <- games_allplay %>%
+    mutate(w_l = as.numeric(PF > PA)) %>%
+    filter(Year == yearid) %>%
+    filter(Type == "Reg") %>%
+    group_by(Team, Type) %>%
+    summarise(APW = sum(APW), 
+            APL = sum(APL), 
+            Pct = as.integer(APW / (APW + APL) * 1000)) %>%
+    select(-Type)
+
+  results %>%
+    inner_join(All_Play, by = "Team") %>%
+    rename(R.W = W.Reg,
+         R.L = L.Reg,
+         R.Pct = Pct.Reg,
+         R.PPG = PPG.Reg,
+         PO.W = W.Playoffs,
+         PO.L = L.Playoffs,
+         PO.Pct = Pct.Playoffs,
+         PO.PPG = PPG.Playoffs,
+         BB.W = W.Championship,
+         BB.L = L.Championship,
+         BB.Pct = Pct.Championship,
+         BB.PPG = PPG.Championship,
+         APW.Pct = Pct) %>%
+    select(Team, R.W, R.L, PO.W, PO.L, BB.W, BB.L, APW, APL) %>%
+    arrange(desc(BB.W), desc(PO.W), desc(R.W)) %>%
+    kable() %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed")) %>%
+    add_header_above(c(" ", "Regular Season" = 2, "Playoffs" = 2, "Busch Bowls" = 2, "All Play" = 2))
+}
+
+get_powerrk <- function(yearid) {
+  games_adj %>%
+    inner_join(games_allplay, by = colnames(games_raw)) %>%
+    filter(Type == "Reg") %>%
+    group_by(Year) %>%
+    mutate(avgpts = mean(PF)) %>%
+    ungroup() %>%
+    filter(Year == yearid) %>%
+    mutate(w_l = as.numeric(PF > PA),
+           sw = as.numeric(APW > APL),
+           WxWk = w_l * Week / 3,
+           APWxWk = APW * Week / 25,
+           PtsvAvgxWk = (PF - avgpts) * (Week / 100),
+           SwxWk = sw * Week / 3,
+           WkScore = WxWk + APWxWk + PtsvAvgxWk + SwxWk) %>%
+    group_by(Team) %>%
+    summarise(apw_ttl = sum(APW), 
+              pts_ttl = as.integer(sum(PF)), 
+              SumScore = as.integer(sum(WkScore))) %>%
+    mutate(apwrk = rank(apw_ttl), 
+           ptsrk = rank(pts_ttl),
+           PowerScore = as.integer(SumScore + apwrk + ptsrk)) %>%
+    arrange(desc(PowerScore)) %>%
+    select(Team, PowerScore, APW = apw_ttl, Pts = pts_ttl, RScore = SumScore) %>%
+    kable() %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE, position = "center") %>%
+    add_header_above(c(" ", "TOTAL" = 1, "Components" = 3)) %>%
+    footnote(general = "RScore = Recent Score. Heavier weight assigned to more recent wins, points, APWs, and shoulda-wons.")
+}
+
+##############################################################################
+#
+# MEASURES
+#
+##############################################################################
+
+games_allplay <- games_raw %>%
+  group_by(Week, Year) %>%
+  mutate(w_rank = ifelse(Year == 2008, rank(PF) / 4 + 1, rank(PF))) %>%
+  mutate(APW = as.integer(w_rank - 1)) %>%
+  mutate(l_rank = ifelse(Year == 2008, rank(-PF) / 4 + 1, rank(-PF))) %>%
+  mutate(APL = as.integer(l_rank - 1)) %>%
+  select(-w_rank, -l_rank)
+
+ty_ppg <- games_raw %>%
+  group_by(Year) %>%
+  summarise(ppg = mean(PF)) %>%
+  filter(Year == this_year) %>%
+  pull(ppg)
+
+games_adj <- games_raw %>%
+  group_by(Year) %>%
+  mutate(ppg = mean(PF)) %>%
+  ungroup() %>%
+  mutate(Adj_PF = round(PF / ppg * ty_ppg, digits = 2)) %>%
+  select(-ppg)
+
+at_wpct_max <- games_raw %>%
+  group_by(Team) %>%
+  filter(n() > 23) %>%
+  ungroup() %>%
+  mutate(w_l = as.numeric(as.logical(PF > PA))) %>%
+  group_by(Team) %>%
+  summarise(Win = sum(w_l), Loss = sum(w_l == 0), Pct = as.integer(Win / (Win + Loss) * 1000)) %>%
+  arrange(desc(Pct)) %>%
+  head(1) %>%
+  pull(Pct)
+
+at_wpct_min <- games_raw %>%
+  group_by(Team) %>%
+  filter(n() > 23) %>%
+  ungroup() %>%
+  mutate(w_l = as.numeric(as.logical(PF > PA))) %>%
+  group_by(Team) %>%
+  summarise(Win = sum(w_l), Loss = sum(w_l == 0), Pct = as.integer(Win / (Win + Loss) * 1000)) %>%
+  arrange(Pct) %>%
+  head(1) %>%
+  pull(Pct)
+
+at_ppg_max <- games_adj %>%
+  group_by(Team) %>%
+  filter(n() > 23) %>%
+  ungroup() %>%
+  group_by(Team) %>%
+  summarise(PPG = round(mean(Adj_PF), digits = 2)) %>%
+  arrange(desc(PPG)) %>%
+  head(1) %>%
+  pull(PPG) %>%
+  as.integer()
+
+at_ppg_min <- games_adj %>%
+  group_by(Team) %>%
+  filter(n() > 23) %>%
+  ungroup() %>%
+  group_by(Team) %>%
+  summarise(PPG = round(mean(Adj_PF), digits = 2)) %>%
+  arrange(PPG) %>%
+  head(1) %>%
+  pull(PPG) %>%
+  as.integer()
+
+y12t_wpct_max <- games_raw %>%
+  group_by(Team) %>%
+  filter(n() > 23) %>%
+  ungroup() %>%
+  filter(Year > 2012) %>%
+  mutate(w_l = as.numeric(as.logical(PF > PA))) %>%
+  group_by(Team) %>%
+  summarise(Win = sum(w_l), Loss = sum(w_l == 0), Pct = as.integer(Win / (Win + Loss) * 1000)) %>%
+  arrange(desc(Pct)) %>%
+  head(1) %>%
+  pull(Pct) %>%
+  as.integer()
+
+y12t_wpct_min <- games_raw %>%
+  group_by(Team) %>%
+  filter(n() > 23) %>%
+  ungroup() %>%
+  filter(Year > 2012) %>%
+  mutate(w_l = as.numeric(as.logical(PF > PA))) %>%
+  group_by(Team) %>%
+  summarise(Win = sum(w_l), Loss = sum(w_l == 0), Pct = as.integer(Win / (Win + Loss) * 1000)) %>%
+  arrange(Pct) %>%
+  head(1) %>%
+  pull(Pct) %>%
+  as.integer()
+
+y12t_ppg_max <- games_adj %>%
+  group_by(Team) %>%
+  filter(n() > 23) %>%
+  ungroup() %>%
+  filter(Year > 2012) %>%
+  group_by(Team) %>%
+  summarise(PPG = round(mean(Adj_PF), digits = 2)) %>%
+  arrange(desc(PPG)) %>%
+  head(1) %>%
+  pull(PPG) %>%
+  as.integer()
+
+y12t_ppg_min <- games_adj %>%
+  group_by(Team) %>%
+  filter(n() > 23) %>%
+  ungroup() %>%
+  filter(Year > 2012) %>%
+  group_by(Team) %>%
+  summarise(PPG = round(mean(Adj_PF), digits = 2)) %>%
+  arrange(PPG) %>%
+  head(1) %>%
+  pull(PPG) %>%
+  as.integer()
+
+champ2004 <- get_champion(2004)
+champ2005 <- get_champion(2005)
+champ2006 <- get_champion(2006)
+champ2007 <- get_champion(2007)
+champ2008 <- get_champion(2008)
+champ2009 <- get_champion(2009)
+champ2010 <- get_champion(2010)
+champ2011 <- get_champion(2011)
+champ2012 <- get_champion(2012)
+champ2013 <- get_champion(2013)
+champ2014 <- get_champion(2014)
+champ2015 <- get_champion(2015)
+champ2016 <- get_champion(2016)
+champ2017 <- get_champion(2017)
+champ2018 <- get_champion(2018)
+champ2019 <- get_champion(2019)
+
+runnerup2003 <- get_runnerup(2003)
+runnerup2004 <- get_runnerup(2004)
+runnerup2005 <- get_runnerup(2005)
+runnerup2006 <- get_runnerup(2006)
+runnerup2007 <- get_runnerup(2007)
+runnerup2008 <- get_runnerup(2008)
+runnerup2009 <- get_runnerup(2009)
+runnerup2010 <- get_runnerup(2010)
+runnerup2011 <- get_runnerup(2011)
+runnerup2012 <- get_runnerup(2012)
+runnerup2013 <- get_runnerup(2013)
+runnerup2014 <- get_runnerup(2014)
+runnerup2015 <- get_runnerup(2015)
+runnerup2016 <- get_runnerup(2016)
+runnerup2017 <- get_runnerup(2017)
+runnerup2018 <- get_runnerup(2018)
+runnerup2019 <- get_runnerup(2019)
+
+mostptsteam2003 <- get_mostptsteam(2003)
+mostptsteam2004 <- get_mostptsteam(2004)
+mostptsteam2005 <- get_mostptsteam(2005)
+mostptsteam2006 <- get_mostptsteam(2006)
+mostptsteam2007 <- get_mostptsteam(2007)
+mostptsteam2008 <- get_mostptsteam(2008)
+mostptsteam2010 <- get_mostptsteam(2010)
+mostptsteam2011 <- get_mostptsteam(2011)
+mostptsteam2012 <- get_mostptsteam(2012)
+mostptsteam2013 <- get_mostptsteam(2013)
+mostptsteam2014 <- get_mostptsteam(2014)
+mostptsteam2015 <- get_mostptsteam(2015)
+mostptsteam2016 <- get_mostptsteam(2016)
+mostptsteam2017 <- get_mostptsteam(2017)
+mostptsteam2018 <- get_mostptsteam(2018)
+mostptsteam2019 <- get_mostptsteam(2019)
+
+mostptspts2003 <- get_mostptspts(2003)
+mostptspts2004 <- get_mostptspts(2004)
+mostptspts2005 <- get_mostptspts(2005)
+mostptspts2006 <- get_mostptspts(2006)
+mostptspts2007 <- get_mostptspts(2007)
+mostptspts2008 <- get_mostptspts(2008)
+mostptspts2010 <- get_mostptspts(2010)
+mostptspts2011 <- get_mostptspts(2011)
+mostptspts2012 <- get_mostptspts(2012)
+mostptspts2013 <- get_mostptspts(2013)
+mostptspts2014 <- get_mostptspts(2014)
+mostptspts2015 <- get_mostptspts(2015)
+mostptspts2016 <- get_mostptspts(2016)
+mostptspts2017 <- get_mostptspts(2017)
+mostptspts2018 <- get_mostptspts(2018)
+mostptspts2019 <- get_mostptspts(2019)
+
+allplaypctteam2003 <- get_allplaypctteam(2003)
+allplaypctteam2004 <- get_allplaypctteam(2004)
+allplaypctteam2005 <- get_allplaypctteam(2005)
+allplaypctteam2006 <- get_allplaypctteam(2006)
+allplaypctteam2007 <- get_allplaypctteam(2007)
+allplaypctteam2008 <- get_allplaypctteam(2008)
+allplaypctteam2010 <- get_allplaypctteam(2010)
+allplaypctteam2011 <- get_allplaypctteam(2011)
+allplaypctteam2012 <- get_allplaypctteam(2012)
+allplaypctteam2013 <- get_allplaypctteam(2013)
+allplaypctteam2014 <- get_allplaypctteam(2014)
+allplaypctteam2015 <- get_allplaypctteam(2015)
+allplaypctteam2016 <- get_allplaypctteam(2016)
+allplaypctteam2017 <- get_allplaypctteam(2017)
+allplaypctteam2018 <- get_allplaypctteam(2018)
+allplaypctteam2019 <- get_allplaypctteam(2019)
+
+allplaypctpct2003 <- get_allplaypctpct(2003)
+allplaypctpct2004 <- get_allplaypctpct(2004)
+allplaypctpct2005 <- get_allplaypctpct(2005)
+allplaypctpct2006 <- get_allplaypctpct(2006)
+allplaypctpct2007 <- get_allplaypctpct(2007)
+allplaypctpct2008 <- get_allplaypctpct(2008)
+allplaypctpct2010 <- get_allplaypctpct(2010)
+allplaypctpct2011 <- get_allplaypctpct(2011)
+allplaypctpct2012 <- get_allplaypctpct(2012)
+allplaypctpct2013 <- get_allplaypctpct(2013)
+allplaypctpct2014 <- get_allplaypctpct(2014)
+allplaypctpct2015 <- get_allplaypctpct(2015)
+allplaypctpct2016 <- get_allplaypctpct(2016)
+allplaypctpct2017 <- get_allplaypctpct(2017)
+allplaypctpct2018 <- get_allplaypctpct(2018)
+allplaypctpct2019 <- get_allplaypctpct(2019)
+
+wkly_avg_std <- games_adj %>%
+  filter(Year == this_year) %>%
+  group_by(Week) %>%
+  summarise(PPG = mean(Adj_PF),
+            STD = sd(Adj_PF)) %>%
+  ungroup()
+
+replacement <- fp_data %>%
+  group_by(Week, Position) %>%
+  mutate(Rank = rank(-Points, ties.method = "first"))%>%
+  ungroup() %>%
+  mutate(Pos = Position) %>%
+  unite("PosRk", c(Pos, Rank), sep = "") %>%
+  filter(PosRk == "QB13" |
+           PosRk == "RB25" |
+           PosRk == "WR25" |
+           PosRk == "TE13" |
+           PosRk == "DST13") %>%
+  select(Position, Replacement = Points, Week)
+
+WAR <- merge(fp_data, replacement, by = c("Position", "Week"), all.x = TRUE)
+
+WAR <- WAR %>%
+  mutate(PVR = Points - Replacement)
+
+WAR <- merge(WAR, wkly_avg_std, by = "Week", all.x = TRUE)
+
+WAR <- WAR %>%
+  mutate(x = PVR + PPG) %>%
+  mutate(WAR = pnorm(x, PPG, STD) - .5) %>%
+  select(Player, Team, Week, Position, WAR, Value, draft_by)
+
+```
+
+
+HOME {data-orientation=rows}
+=====================================
+
+Row {data-height=30}
+-------------------------------------
+**Updated as of week `r this_week`, `r this_year`**
+
+Row
+-------------------------------------
+
+### Rankings
+
+```{r}
+get_powerrk(this_year)
+```
+
+### This Year's Points Breakdown
+```{r}
+#
+# GETTING PTS AND EXPECTED
+#
+
+espn_pred <- rosterdata %>%
+  filter(Week < 13) %>%
+  filter(Starter == "Starter") %>%
+  group_by(owner) %>%
+  summarise(Predicted = sum(Predicted, na.rm = TRUE)) %>%
+  ungroup() %>%
+  rename(Team = owner) %>%
+  filter(!is.na(Team))
+
+espn_actual <- rosterdata %>%
+  filter(Week < 13) %>%
+  filter(Starter == "Starter") %>%
+  group_by(owner) %>%
+  summarise(Actual = sum(Actual, na.rm = TRUE)) %>%
+  ungroup() %>%
+  rename(Team = owner)
+
+#
+# GETTING OPTIMAL
+#
+
+ranked <- rosterdata %>%
+  select(Week, Player, Position, owner, Actual) %>%
+  group_by(owner, Position, Week) %>%
+  mutate(Rank = rank(-Actual, ties.method = "first")) %>%
+  arrange(owner) %>%
+  filter(!is.na(owner))
+
+rankedqbs <- ranked %>%
+  filter(Position == "Quarterback") %>%
+  filter(Rank == 1) %>%
+  mutate(PosOrder = 1)
+
+rankedrbs <- ranked %>%
+  filter(Position == "Running Back") %>%
+  filter(Rank <= 2) %>%
+  mutate(PosOrder = 2)
+
+rankedwrs <- ranked %>%
+  filter(Position == "Wide Receiver") %>%
+  filter(Rank <= 2) %>%
+  mutate(PosOrder = 3)
+
+rankedtes <- ranked %>%
+  filter(Position == "Tight End") %>%
+  filter(Rank <= 1) %>%
+  mutate(PosOrder = 4)
+
+rankeddef <- ranked %>%
+  filter(Position == "Defense") %>%
+  filter(Rank <= 1) %>%
+  mutate(PosOrder = 6)
+
+rankedfl <- ranked %>%
+  anti_join(bind_rows(rankedrbs, 
+                      rankedwrs, 
+                      rankedtes)) %>%
+  filter(Position %in% c("Running Back", 
+                         "Wide Receiver", 
+                         "Tight End")) %>%
+  group_by(Week, owner) %>%
+  mutate(Rank = rank(-Actual, ties.method = "first")) %>%
+  filter(Rank == 1) %>%
+  mutate(Position = "Flex") %>%
+  mutate(PosOrder = 5)
+
+optimallineup <- bind_rows(rankedqbs, 
+                           rankedrbs, 
+                           rankedwrs, 
+                           rankedtes, 
+                           rankedfl, 
+                           rankeddef) %>%
+  arrange(owner,Week,PosOrder)
+
+optimal_total <- optimallineup %>%
+  group_by(owner) %>%
+  summarise(Optimal = sum(Actual)) %>%
+  ungroup() %>%
+  rename(Team = owner)
+
+pts_vs_opt <- inner_join(espn_actual, optimal_total) %>% 
+  arrange(desc(Actual))
+
+pts_vs_opt$Team <- factor(pts_vs_opt$Team, levels = pts_vs_opt$Team[order(pts_vs_opt$Actual, decreasing = TRUE)])
+espn_pred$Team <- factor(espn_pred$Team, levels = pts_vs_opt$Team[order(pts_vs_opt$Actual, decreasing = TRUE)])
+
+pts_vs_opt <- pts_vs_opt %>%
+  pivot_longer(-Team, names_to = "category", values_to = "n")
+
+ggplot() +
+  geom_line(pts_vs_opt, 
+            mapping = aes(x = Team, y = n), 
+            linetype = "dashed", 
+            size = .5) + 
+  geom_point(pts_vs_opt, 
+             mapping = aes(x = Team, y = n, color = category), 
+             size = 4) +
+  geom_point(espn_pred, 
+             mapping = aes(x = Team, y = Predicted, color = "ESPN Pred"), 
+             size = 4,
+             shape = 1) +
+  scale_color_manual("Legend", values = c("black", "orange", "grey")) +
+  labs(title = "Total Pts vs ESPN Preds & Optimal Lineups",
+       subtitle = "Sorted by actual points scored (black)", 
+       caption = "*black line = spread between actual pts and most possible pts") +
+  ylab("Points") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90)) +
+  theme(legend.position="top")
+```
+
+Row
+-------------------------------------
+### Best Power Scores of the 12 Team Era
+
+``` {r}
+games_adj %>%
+  inner_join(games_allplay, by = colnames(games_raw)) %>%
+  filter(Type == "Reg") %>%
+  filter(Year > 2012) %>%
+  group_by(Year) %>%
+  mutate(avgpts = mean(PF)) %>%
+  ungroup() %>%
+  mutate(w_l = as.numeric(PF > PA),
+         sw = as.numeric(APW > APL),
+         WxWk = w_l * Week / 3,
+         APWxWk = APW * Week / 25,
+         PtsvAvgxWk = (PF - avgpts) * (Week / 100),
+         SwxWk = sw * Week / 3,
+         WkScore = WxWk + APWxWk + PtsvAvgxWk + SwxWk) %>%
+  group_by(Year, Team) %>%
+  summarise(apw_ttl = sum(APW), 
+            pts_ttl = as.integer(sum(PF)), 
+            SumScore = as.integer(sum(WkScore))) %>%
+  mutate(apwrk = rank(apw_ttl), 
+         ptsrk = rank(pts_ttl),
+         PowerScore = as.integer(SumScore + apwrk + ptsrk)) %>%
+  arrange(desc(PowerScore)) %>%
+  head(10) %>%
+  select(Year, Team, PowerScore, APW = apw_ttl, Pts = pts_ttl, RScore = SumScore) %>%
+    kable() %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed"), position = "center")
+
+```
+
+### Record Watch
+
+```{r}
+
+##############################################################################
+# FOR SEASON AND GAME RECORDS WE CAN JUST BIND LEADERBOARD AND FILTER FOR 
+# ANY RECORDS THIS YEAR WHICH RANK IN THE TOP 2 OR 3
+#
+# FOR CAREER WE NEED TO COMPARE CAREER RANK FROM ONE WEEK TO THE NEXT
+##############################################################################
+
+```
+
+
+WAR {data-navmenu="PLAYER DATA" data-orientation=rows}
+=====================================  
+
+Column
+-------------------------------------
+
+### Total WAR
+
+``` {r}
+ttl_war <- WAR %>%
+  group_by(Player, Position) %>%
+  summarise(Total = round(sum(WAR), digits = 2))
+
+lw_war <- WAR %>%
+  filter(Week == this_week) %>%
+  group_by(Player, Position) %>%
+  summarise(LastWeek = round(sum(WAR), digits = 2))
+
+l3_war <- WAR %>%
+  filter(Week > (this_week - 3)) %>%
+  group_by(Player, Position) %>%
+  summarise(Last3Weeks = round(sum(WAR), digits = 2))
+
+war_display <- inner_join(ttl_war, lw_war)
+war_display <- inner_join(war_display, l3_war)
+
+war_display %>%
+  arrange(desc(Total)) %>%
+  DT::datatable(options = list(
+    class = "display",
+    pageLength = 10
+  ))
+
+```
+
+### WAR vs Draft Value
+
+``` {r}
+WAR %>%
+  group_by(Player, Position, Value, draft_by) %>%
+  summarise(WAR = round(sum(WAR), digits = 2)) %>%
+  arrange(desc(WAR)) %>%
+  plot_ly() %>%
+  add_trace(type = "scatter", 
+          mode = "markers",
+          marker = list(size = 10),
+          x = ~Value, 
+          y = ~WAR, 
+          name = ~Position,
+          text = ~Player)
+
+```
+
+
+DRAFT HISTORY {data-navmenu="PLAYER DATA" data-orientation=rows}
+=====================================  
+
+Column {daata width=250}
+-------------------------------------
+
+### Draft History
+
+``` {r}
+draft %>%
+  select(-draft_by) %>%
+  arrange(desc(Year), desc(Value)) %>%
+  pivot_wider(names_from = Year, values_from = Value) %>%
+  DT::datatable(options = list(
+    class = "display",
+    pageLength = 50
+  ))
+
+```
+
+`r team01` {data-navmenu="FRANCHISES" data-orientation=rows}
+===================================== 
+
+Row {data-height=30}
+-------------------------------------
+**`r team01`**
+
+Row
+-------------------------------------
+
+### Founded
+```{r}
+founded <- get_founded(team01)
+valueBox(founded, icon = "fa-calendar-plus")
+```
+
+### Busch Bowls
+```{r}
+champs <- get_buschbowls(team01)
+valueBox(champs, icon = "fa-trophy")
+```
+
+### Playoff Appearances
+```{r}
+playoff_appear <- get_po_appear(team01)
+valueBox(playoff_appear, icon = "fa-award")
+```
+
+### Winning Seasons
+```{r}
+winning_seasons <- get_winning_seasons(team01)
+valueBox(winning_seasons, icon = "fa-star-half-alt")
+```
+
+Row
+-------------------------------------
+
+### All Time Win Percentage
+
+```{r}
+wpct <- get_at_wpct(team01)
+gauge(wpct, min = at_wpct_min, max = at_wpct_max)
+```
+
+### All Time PPG (Adjusted)
+
+```{r}
+ppg <- get_at_ppg(team01)
+gauge(ppg, min = at_ppg_min, max = at_ppg_max)
+```
+
+### 12T Era Win Percentage
+
+```{r}
+wpct <- get_12t_wpct(team01)
+gauge(wpct, min = y12t_wpct_min, max = y12t_wpct_max)
+```
+
+### 12T Era PPG (Adjusted)
+
+```{r}
+ppg <- get_12t_ppg(team01)
+gauge(ppg, min = y12t_ppg_min, max = y12t_ppg_max)
+```
+
+Row {data-height=30}
+-------------------------------------
+*R = Regular Season, PO = Playoffs, BB = Busch Bowl, AP = All Play*
+
+Row
+-------------------------------------
+
+### All Time
+
+```{r}
+get_alltime_stats(team01)
+```
+
+Row
+-------------------------------------
+
+### 12 Team Era
+
+```{r}
+get_12t_stats(team01)
+```
+
+Row
+-------------------------------------
+
+### Season Summary
+
+```{r}
+get_season_summary(team01)
+```
+
+Row
+-------------------------------------
+
+### Game Log
+
+```{r}
+get_game_log(team01)
+```
+
+
+
+`r team02` {data-navmenu="FRANCHISES" data-orientation=rows}
+===================================== 
+Row {data-height=30}
+-------------------------------------
+**`r team02`**
+
+Row
+-------------------------------------
+
+### Founded
+```{r}
+founded <- get_founded(team02)
+valueBox(founded, icon = "fa-calendar-plus")
+```
+
+### Busch Bowls
+```{r}
+champs <- get_buschbowls(team02)
+valueBox(champs, icon = "fa-trophy")
+```
+
+### Playoff Appearances
+```{r}
+playoff_appear <- get_po_appear(team02)
+valueBox(playoff_appear, icon = "fa-award")
+```
+
+### Winning Seasons
+```{r}
+winning_seasons <- get_winning_seasons(team02)
+valueBox(winning_seasons, icon = "fa-star-half-alt")
+```
+
+Row
+-------------------------------------
+### All Time Win Percentage
+
+```{r}
+wpct <- get_at_wpct(team02)
+gauge(wpct, min = at_wpct_min, max = at_wpct_max)
+```
+
+### All Time PPG (Adjusted)
+
+```{r}
+ppg <- get_at_ppg(team02)
+gauge(ppg, min = at_ppg_min, max = at_ppg_max)
+```
+
+### 12T Era Win Percentage
+
+```{r}
+wpct <- get_12t_wpct(team02)
+gauge(wpct, min = y12t_wpct_min, max = y12t_wpct_max)
+```
+
+### 12T Era PPG (Adjusted)
+
+```{r}
+ppg <- get_12t_ppg(team02)
+gauge(ppg, min = y12t_ppg_min, max = y12t_ppg_max)
+```
+
+Row {data-height=30}
+-------------------------------------
+*R = Regular Season, PO = Playoffs, BB = Busch Bowl, AP = All Play*
+
+Row
+-------------------------------------
+### All Time
+
+```{r}
+get_alltime_stats(team02)
+```
+
+Row
+-------------------------------------
+### 12 Team Era
+
+```{r}
+get_12t_stats(team02)
+```
+
+
+Row
+-------------------------------------
+
+### Season Summary
+
+```{r}
+get_season_summary(team02)
+```
+
+Row
+-------------------------------------
+
+### Game Log
+
+```{r}
+get_game_log(team02)
+```
+
+
+
+`r team03` {data-navmenu="FRANCHISES" data-orientation=rows}
+===================================== 
+Row {data-height=30}
+-------------------------------------
+**`r team03`**
+
+Row
+-------------------------------------
+
+### Founded
+```{r}
+founded <- get_founded(team03)
+valueBox(founded, icon = "fa-calendar-plus")
+```
+
+### Busch Bowls
+```{r}
+champs <- get_buschbowls(team03)
+valueBox(champs, icon = "fa-trophy")
+```
+
+### Playoff Appearances
+```{r}
+playoff_appear <- get_po_appear(team03)
+valueBox(playoff_appear, icon = "fa-award")
+```
+
+### Winning Seasons
+```{r}
+winning_seasons <- get_winning_seasons(team03)
+valueBox(winning_seasons, icon = "fa-star-half-alt")
+```
+
+Row
+-------------------------------------
+### All Time Win Percentage
+
+```{r}
+wpct <- get_at_wpct(team03)
+gauge(wpct, min = at_wpct_min, max = at_wpct_max)
+```
+
+### All Time PPG (Adjusted)
+
+```{r}
+ppg <- get_at_ppg(team03)
+gauge(ppg, min = at_ppg_min, max = at_ppg_max)
+```
+
+### 12T Era Win Percentage
+
+```{r}
+wpct <- get_12t_wpct(team03)
+gauge(wpct, min = y12t_wpct_min, max = y12t_wpct_max)
+```
+
+### 12T Era PPG (Adjusted)
+
+```{r}
+ppg <- get_12t_ppg(team03)
+gauge(ppg, min = y12t_ppg_min, max = y12t_ppg_max)
+```
+
+Row {data-height=30}
+-------------------------------------
+*R = Regular Season, PO = Playoffs, BB = Busch Bowl, AP = All Play*
+
+Row
+-------------------------------------
+
+### All Time
+
+```{r}
+get_alltime_stats(team03)
+```
+
+Row
+-------------------------------------
+
+### 12 Team Era
+
+```{r}
+get_12t_stats(team03)
+```
+
+Row
+-------------------------------------
+
+### Season Summary
+
+```{r}
+get_season_summary(team03)
+```
+
+Row
+-------------------------------------
+
+### Game Log
+
+```{r}
+get_game_log(team03)
+```
+
+
+
+`r team04` {data-navmenu="FRANCHISES" data-orientation=rows}
+===================================== 
+Row {data-height=30}
+-------------------------------------
+**`r team04`**
+
+Row
+-------------------------------------
+
+### Founded
+```{r}
+founded <- get_founded(team04)
+valueBox(founded, icon = "fa-calendar-plus")
+```
+
+### Busch Bowls
+```{r}
+champs <- get_buschbowls(team04)
+valueBox(champs, icon = "fa-trophy")
+```
+
+### Playoff Appearances
+```{r}
+playoff_appear <- get_po_appear(team04)
+valueBox(playoff_appear, icon = "fa-award")
+```
+
+### Winning Seasons
+```{r}
+winning_seasons <- get_winning_seasons(team04)
+valueBox(winning_seasons, icon = "fa-star-half-alt")
+```
+
+Row
+-------------------------------------
+### All Time Win Percentage
+
+```{r}
+wpct <- get_at_wpct(team04)
+gauge(wpct, min = at_wpct_min, max = at_wpct_max)
+```
+
+### All Time PPG (Adjusted)
+
+```{r}
+ppg <- get_at_ppg(team04)
+gauge(ppg, min = at_ppg_min, max = at_ppg_max)
+```
+
+### 12T Era Win Percentage
+
+```{r}
+wpct <- get_12t_wpct(team04)
+gauge(wpct, min = y12t_wpct_min, max = y12t_wpct_max)
+```
+
+### 12T Era PPG (Adjusted)
+
+```{r}
+ppg <- get_12t_ppg(team04)
+gauge(ppg, min = y12t_ppg_min, max = y12t_ppg_max)
+```
+
+Row {data-height=30}
+-------------------------------------
+*R = Regular Season, PO = Playoffs, BB = Busch Bowl, AP = All Play*
+
+Row
+-------------------------------------
+
+### All Time
+
+```{r}
+get_alltime_stats(team04)
+```
+
+Row
+-------------------------------------
+
+### 12 Team Era
+
+```{r}
+get_12t_stats(team04)
+```
+
+Row
+-------------------------------------
+
+### Season Summary
+
+```{r}
+get_season_summary(team04)
+```
+
+Row
+-------------------------------------
+
+### Game Log
+
+```{r}
+get_game_log(team04)
+```
+
+
+
+`r team05` {data-navmenu="FRANCHISES" data-orientation=rows}
+===================================== 
+Row {data-height=30}
+-------------------------------------
+**`r team05`**
+
+Row
+-------------------------------------
+
+### Founded
+```{r}
+founded <- get_founded(team05)
+valueBox(founded, icon = "fa-calendar-plus")
+```
+
+### Busch Bowls
+```{r}
+champs <- get_buschbowls(team05)
+valueBox(champs, icon = "fa-trophy")
+```
+
+### Playoff Appearances
+```{r}
+playoff_appear <- get_po_appear(team05)
+valueBox(playoff_appear, icon = "fa-award")
+```
+
+### Winning Seasons
+```{r}
+winning_seasons <- get_winning_seasons(team05)
+valueBox(winning_seasons, icon = "fa-star-half-alt")
+```
+
+Row
+-------------------------------------
+### All Time Win Percentage
+
+```{r}
+wpct <- get_at_wpct(team05)
+gauge(wpct, min = at_wpct_min, max = at_wpct_max)
+```
+
+### All Time PPG (Adjusted)
+
+```{r}
+ppg <- get_at_ppg(team05)
+gauge(ppg, min = at_ppg_min, max = at_ppg_max)
+```
+
+### 12T Era Win Percentage
+
+```{r}
+wpct <- get_12t_wpct(team05)
+gauge(wpct, min = y12t_wpct_min, max = y12t_wpct_max)
+```
+
+### 12T Era PPG (Adjusted)
+
+```{r}
+ppg <- get_12t_ppg(team05)
+gauge(ppg, min = y12t_ppg_min, max = y12t_ppg_max)
+```
+
+Row {data-height=30}
+-------------------------------------
+*R = Regular Season, PO = Playoffs, BB = Busch Bowl, AP = All Play*
+
+Row
+-------------------------------------
+
+### All Time
+
+```{r}
+get_alltime_stats(team05)
+```
+
+Row
+-------------------------------------
+
+### 12 Team Era
+
+```{r}
+get_12t_stats(team05)
+```
+
+Row
+-------------------------------------
+
+### Season Summary
+
+```{r}
+get_season_summary(team05)
+```
+
+Row
+-------------------------------------
+
+### Game Log
+
+```{r}
+get_game_log(team05)
+```
+
+
+
+`r team06` {data-navmenu="FRANCHISES" data-orientation=rows}
+===================================== 
+Row {data-height=30}
+-------------------------------------
+**`r team06`**
+
+Row
+-------------------------------------
+
+### Founded
+```{r}
+founded <- get_founded(team06)
+valueBox(founded, icon = "fa-calendar-plus")
+```
+
+### Busch Bowls
+```{r}
+champs <- get_buschbowls(team06)
+valueBox(champs, icon = "fa-trophy")
+```
+
+### Playoff Appearances
+```{r}
+playoff_appear <- get_po_appear(team06)
+valueBox(playoff_appear, icon = "fa-award")
+```
+
+### Winning Seasons
+```{r}
+winning_seasons <- get_winning_seasons(team06)
+valueBox(winning_seasons, icon = "fa-star-half-alt")
+```
+
+Row
+-------------------------------------
+### All Time Win Percentage
+
+```{r}
+wpct <- get_at_wpct(team06)
+gauge(wpct, min = at_wpct_min, max = at_wpct_max)
+```
+
+### All Time PPG (Adjusted)
+
+```{r}
+ppg <- get_at_ppg(team06)
+gauge(ppg, min = at_ppg_min, max = at_ppg_max)
+```
+
+### 12T Era Win Percentage
+
+```{r}
+wpct <- get_12t_wpct(team06)
+gauge(wpct, min = y12t_wpct_min, max = y12t_wpct_max)
+```
+
+### 12T Era PPG (Adjusted)
+
+```{r}
+ppg <- get_12t_ppg(team06)
+gauge(ppg, min = y12t_ppg_min, max = y12t_ppg_max)
+```
+
+Row {data-height=30}
+-------------------------------------
+*R = Regular Season, PO = Playoffs, BB = Busch Bowl, AP = All Play*
+
+Row
+-------------------------------------
+
+### All Time
+
+```{r}
+get_alltime_stats(team06)
+```
+
+Row
+-------------------------------------
+
+### 12 Team Era
+
+```{r}
+get_12t_stats(team06)
+```
+
+Row
+-------------------------------------
+
+### Season Summary
+
+```{r}
+get_season_summary(team06)
+```
+
+Row
+-------------------------------------
+
+### Game Log
+
+```{r}
+get_game_log(team06)
+```
+
+
+
+`r team07` {data-navmenu="FRANCHISES" data-orientation=rows}
+===================================== 
+Row {data-height=30}
+-------------------------------------
+**`r team07`**
+
+Row
+-------------------------------------
+
+### Founded
+```{r}
+founded <- get_founded(team07)
+valueBox(founded, icon = "fa-calendar-plus")
+```
+
+### Busch Bowls
+```{r}
+champs <- get_buschbowls(team07)
+valueBox(champs, icon = "fa-trophy")
+```
+
+### Playoff Appearances
+```{r}
+playoff_appear <- get_po_appear(team07)
+valueBox(playoff_appear, icon = "fa-award")
+```
+
+### Winning Seasons
+```{r}
+winning_seasons <- get_winning_seasons(team07)
+valueBox(winning_seasons, icon = "fa-star-half-alt")
+```
+
+Row
+-------------------------------------
+### All Time Win Percentage
+
+```{r}
+wpct <- get_at_wpct(team07)
+gauge(wpct, min = at_wpct_min, max = at_wpct_max)
+```
+
+### All Time PPG (Adjusted)
+
+```{r}
+ppg <- get_at_ppg(team07)
+gauge(ppg, min = at_ppg_min, max = at_ppg_max)
+```
+
+### 12T Era Win Percentage
+
+```{r}
+wpct <- get_12t_wpct(team07)
+gauge(wpct, min = y12t_wpct_min, max = y12t_wpct_max)
+```
+
+### 12T Era PPG (Adjusted)
+
+```{r}
+ppg <- get_12t_ppg(team07)
+gauge(ppg, min = y12t_ppg_min, max = y12t_ppg_max)
+```
+
+Row {data-height=30}
+-------------------------------------
+*R = Regular Season, PO = Playoffs, BB = Busch Bowl, AP = All Play*
+
+Row
+-------------------------------------
+
+### All Time
+
+```{r}
+get_alltime_stats(team07)
+```
+
+Row
+-------------------------------------
+
+### 12 Team Era
+
+```{r}
+get_12t_stats(team07)
+```
+
+Row
+-------------------------------------
+
+### Season Summary
+
+```{r}
+get_season_summary(team07)
+```
+
+Row
+-------------------------------------
+
+### Game Log
+
+```{r}
+get_game_log(team07)
+```
+
+
+
+`r team08` {data-navmenu="FRANCHISES" data-orientation=rows}
+===================================== 
+Row {data-height=30}
+-------------------------------------
+**`r team08`**
+
+Row
+-------------------------------------
+
+### Founded
+```{r}
+founded <- get_founded(team08)
+valueBox(founded, icon = "fa-calendar-plus")
+```
+
+### Busch Bowls
+```{r}
+champs <- get_buschbowls(team08)
+valueBox(champs, icon = "fa-trophy")
+```
+
+### Playoff Appearances
+```{r}
+playoff_appear <- get_po_appear(team08)
+valueBox(playoff_appear, icon = "fa-award")
+```
+
+### Winning Seasons
+```{r}
+winning_seasons <- get_winning_seasons(team08)
+valueBox(winning_seasons, icon = "fa-star-half-alt")
+```
+
+Row
+-------------------------------------
+### All Time Win Percentage
+
+```{r}
+wpct <- get_at_wpct(team08)
+gauge(wpct, min = at_wpct_min, max = at_wpct_max)
+```
+
+### All Time PPG (Adjusted)
+
+```{r}
+ppg <- get_at_ppg(team08)
+gauge(ppg, min = at_ppg_min, max = at_ppg_max)
+```
+
+### 12T Era Win Percentage
+
+```{r}
+wpct <- get_12t_wpct(team08)
+gauge(wpct, min = y12t_wpct_min, max = y12t_wpct_max)
+```
+
+### 12T Era PPG (Adjusted)
+
+```{r}
+ppg <- get_12t_ppg(team08)
+gauge(ppg, min = y12t_ppg_min, max = y12t_ppg_max)
+```
+
+Row {data-height=30}
+-------------------------------------
+*R = Regular Season, PO = Playoffs, BB = Busch Bowl, AP = All Play*
+
+Row
+-------------------------------------
+
+### All Time
+
+```{r}
+get_alltime_stats(team08)
+```
+
+Row
+-------------------------------------
+
+### 12 Team Era
+
+```{r}
+get_12t_stats(team08)
+```
+
+Row
+-------------------------------------
+
+### Season Summary
+
+```{r}
+get_season_summary(team08)
+```
+
+Row
+-------------------------------------
+
+### Game Log
+
+```{r}
+get_game_log(team08)
+```
+
+
+
+`r team09` {data-navmenu="FRANCHISES" data-orientation=rows}
+===================================== 
+Row {data-height=30}
+-------------------------------------
+**`r team09`**
+
+Row
+-------------------------------------
+
+### Founded
+```{r}
+founded <- get_founded(team09)
+valueBox(founded, icon = "fa-calendar-plus")
+```
+
+### Busch Bowls
+```{r}
+champs <- get_buschbowls(team09)
+valueBox(champs, icon = "fa-trophy")
+```
+
+### Playoff Appearances
+```{r}
+playoff_appear <- get_po_appear(team09)
+valueBox(playoff_appear, icon = "fa-award")
+```
+
+### Winning Seasons
+```{r}
+winning_seasons <- get_winning_seasons(team09)
+valueBox(winning_seasons, icon = "fa-star-half-alt")
+```
+
+Row
+-------------------------------------
+### All Time Win Percentage
+
+```{r}
+wpct <- get_at_wpct(team09)
+gauge(wpct, min = at_wpct_min, max = at_wpct_max)
+```
+
+### All Time PPG (Adjusted)
+
+```{r}
+ppg <- get_at_ppg(team09)
+gauge(ppg, min = at_ppg_min, max = at_ppg_max)
+```
+
+### 12T Era Win Percentage
+
+```{r}
+wpct <- get_12t_wpct(team09)
+gauge(wpct, min = y12t_wpct_min, max = y12t_wpct_max)
+```
+
+### 12T Era PPG (Adjusted)
+
+```{r}
+ppg <- get_12t_ppg(team09)
+gauge(ppg, min = y12t_ppg_min, max = y12t_ppg_max)
+```
+
+Row {data-height=30}
+-------------------------------------
+*R = Regular Season, PO = Playoffs, BB = Busch Bowl, AP = All Play*
+
+Row
+-------------------------------------
+
+### All Time
+
+```{r}
+get_alltime_stats(team09)
+```
+
+Row
+-------------------------------------
+
+### 12 Team Era
+
+```{r}
+get_12t_stats(team09)
+```
+
+Row
+-------------------------------------
+
+### Season Summary
+
+```{r}
+get_season_summary(team09)
+```
+
+Row
+-------------------------------------
+
+### Game Log
+
+```{r}
+get_game_log(team09)
+```
+
+
+
+`r team10` {data-navmenu="FRANCHISES" data-orientation=rows}
+===================================== 
+Row {data-height=30}
+-------------------------------------
+**`r team10`**
+
+Row
+-------------------------------------
+
+### Founded
+```{r}
+founded <- get_founded(team10)
+valueBox(founded, icon = "fa-calendar-plus")
+```
+
+### Busch Bowls
+```{r}
+champs <- get_buschbowls(team10)
+valueBox(champs, icon = "fa-trophy")
+```
+
+### Playoff Appearances
+```{r}
+playoff_appear <- get_po_appear(team10)
+valueBox(playoff_appear, icon = "fa-award")
+```
+
+### Winning Seasons
+```{r}
+winning_seasons <- get_winning_seasons(team10)
+valueBox(winning_seasons, icon = "fa-star-half-alt")
+```
+
+Row
+-------------------------------------
+### All Time Win Percentage
+
+```{r}
+wpct <- get_at_wpct(team10)
+gauge(wpct, min = at_wpct_min, max = at_wpct_max)
+```
+
+### All Time PPG (Adjusted)
+
+```{r}
+ppg <- get_at_ppg(team10)
+gauge(ppg, min = at_ppg_min, max = at_ppg_max)
+```
+
+### 12T Era Win Percentage
+
+```{r}
+wpct <- get_12t_wpct(team10)
+gauge(wpct, min = y12t_wpct_min, max = y12t_wpct_max)
+```
+
+### 12T Era PPG (Adjusted)
+
+```{r}
+ppg <- get_12t_ppg(team10)
+gauge(ppg, min = y12t_ppg_min, max = y12t_ppg_max)
+```
+
+Row {data-height=30}
+-------------------------------------
+*R = Regular Season, PO = Playoffs, BB = Busch Bowl, AP = All Play*
+
+Row
+-------------------------------------
+
+### All Time
+
+```{r}
+get_alltime_stats(team10)
+```
+
+Row
+-------------------------------------
+
+### 12 Team Era
+
+```{r}
+get_12t_stats(team10)
+```
+
+Row
+-------------------------------------
+
+### Season Summary
+
+```{r}
+get_season_summary(team10)
+```
+
+Row
+-------------------------------------
+
+### Game Log
+
+```{r}
+get_game_log(team10)
+```
+
+
+
+`r team11` {data-navmenu="FRANCHISES" data-orientation=rows}
+===================================== 
+Row {data-height=30}
+-------------------------------------
+**`r team11`**
+
+Row
+-------------------------------------
+
+### Founded
+```{r}
+founded <- get_founded(team11)
+valueBox(founded, icon = "fa-calendar-plus")
+```
+
+### Busch Bowls
+```{r}
+champs <- get_buschbowls(team11)
+valueBox(champs, icon = "fa-trophy")
+```
+
+### Playoff Appearances
+```{r}
+playoff_appear <- get_po_appear(team11)
+valueBox(playoff_appear, icon = "fa-award")
+```
+
+### Winning Seasons
+```{r}
+winning_seasons <- get_winning_seasons(team11)
+valueBox(winning_seasons, icon = "fa-star-half-alt")
+```
+
+Row
+-------------------------------------
+### All Time Win Percentage
+
+```{r}
+wpct <- get_at_wpct(team11)
+gauge(wpct, min = at_wpct_min, max = at_wpct_max)
+```
+
+### All Time PPG (Adjusted)
+
+```{r}
+ppg <- get_at_ppg(team11)
+gauge(ppg, min = at_ppg_min, max = at_ppg_max)
+```
+
+### 12T Era Win Percentage
+
+```{r}
+wpct <- get_12t_wpct(team11)
+gauge(wpct, min = y12t_wpct_min, max = y12t_wpct_max)
+```
+
+### 12T Era PPG (Adjusted)
+
+```{r}
+ppg <- get_12t_ppg(team11)
+gauge(ppg, min = y12t_ppg_min, max = y12t_ppg_max)
+```
+
+Row {data-height=30}
+-------------------------------------
+*R = Regular Season, PO = Playoffs, BB = Busch Bowl, AP = All Play*
+
+Row
+-------------------------------------
+
+### All Time
+
+```{r}
+get_alltime_stats(team11)
+```
+
+Row
+-------------------------------------
+
+### 12 Team Era
+
+```{r}
+get_12t_stats(team11)
+```
+
+Row
+-------------------------------------
+
+### Season Summary
+
+```{r}
+get_season_summary(team11)
+```
+
+Row
+-------------------------------------
+
+### Game Log
+
+```{r}
+get_game_log(team11)
+```
+
+
+
+`r team12` {data-navmenu="FRANCHISES" data-orientation=rows}
+===================================== 
+Row {data-height=30}
+-------------------------------------
+**`r team12`**
+
+Row
+-------------------------------------
+
+### Founded
+```{r}
+founded <- get_founded(team12)
+valueBox(founded, icon = "fa-calendar-plus")
+```
+
+### Busch Bowls
+```{r}
+champs <- get_buschbowls(team12)
+valueBox(champs, icon = "fa-trophy")
+```
+
+### Playoff Appearances
+```{r}
+playoff_appear <- get_po_appear(team12)
+valueBox(playoff_appear, icon = "fa-award")
+```
+
+### Winning Seasons
+```{r}
+winning_seasons <- get_winning_seasons(team12)
+valueBox(winning_seasons, icon = "fa-star-half-alt")
+```
+
+Row
+-------------------------------------
+### All Time Win Percentage
+
+```{r}
+wpct <- get_at_wpct(team12)
+gauge(wpct, min = at_wpct_min, max = at_wpct_max)
+```
+
+### All Time PPG (Adjusted)
+
+```{r}
+ppg <- get_at_ppg(team12)
+gauge(ppg, min = at_ppg_min, max = at_ppg_max)
+```
+
+### 12T Era Win Percentage
+
+```{r}
+wpct <- get_12t_wpct(team12)
+gauge(wpct, min = y12t_wpct_min, max = y12t_wpct_max)
+```
+
+### 12T Era PPG (Adjusted)
+
+```{r}
+ppg <- get_12t_ppg(team12)
+gauge(ppg, min = y12t_ppg_min, max = y12t_ppg_max)
+```
+
+Row {data-height=30}
+-------------------------------------
+*R = Regular Season, PO = Playoffs, BB = Busch Bowl, AP = All Play*
+
+Row
+-------------------------------------
+
+### All Time
+
+```{r}
+get_alltime_stats(team12)
+```
+
+Row
+-------------------------------------
+
+### 12 Team Era
+
+```{r}
+get_12t_stats(team12)
+```
+
+Row
+-------------------------------------
+
+### Season Summary
+
+```{r}
+get_season_summary(team12)
+```
+
+Row
+-------------------------------------
+
+### Game Log
+
+```{r}
+get_game_log(team12)
+```
+
+
+2003 {data-navmenu="SEASONS" data-orientation=rows}
+===================================== 
+
+Row
+-------------------------------------
+
+### BLF {data-width=50}
+![](images/blf_logo.png)
+
+
+### 2003 BLF Results and Standings
+BUSCH BOWL CHAMPION: **IRON HORSE**  
+BUSCH BOWL RUNNER UP: **`r runnerup2003`**  
+MOST REG SEASON PTS: **`r mostptsteam2003`, `r mostptspts2003`**  
+HIGHEST ALL PLAY W%: **`r allplaypctteam2003`, `r allplaypctpct2003`**  
+
+Row
+-------------------------------------
+
+### Power Rank
+
+```{r}
+get_powerrk(2003)
+```
+
+### Standings
+
+```{r}
+get_standings(2003)
+```
+
+2004 {data-navmenu="SEASONS" data-orientation=rows}
+===================================== 
+
+Row
+-------------------------------------
+
+### BLF {data-width=50}
+![](images/blf_logo.png)
+
+### 2004 BLF Results and Standings
+BUSCH BOWL CHAMPION: **`r champ2004`**  
+BUSCH BOWL RUNNER UP: **`r runnerup2004`**  
+MOST REG SEASON PTS: **`r mostptsteam2004`, `r mostptspts2004`**  
+HIGHEST ALL PLAY W%: **`r allplaypctteam2004`, `r allplaypctpct2004`**  
+
+Row
+-------------------------------------
+
+### Power Rank
+
+```{r}
+get_powerrk(2004)
+```
+
+### Standings
+
+```{r}
+get_standings(2004)
+```
+
+2005 {data-navmenu="SEASONS" data-orientation=rows}
+===================================== 
+
+Row
+-------------------------------------
+
+### BLF {data-width=50}
+![](images/blf_logo.png)
+
+
+### 2005 BLF Results and Standings
+BUSCH BOWL CHAMPION: **`r champ2005`**  
+BUSCH BOWL RUNNER UP: **`r runnerup2005`**  
+MOST REG SEASON PTS: **`r mostptsteam2005`, `r mostptspts2005`**  
+HIGHEST ALL PLAY W%: **`r allplaypctteam2005`, `r allplaypctpct2005`**  
+
+Row
+-------------------------------------
+
+### Power Rank
+
+```{r}
+get_powerrk(2005)
+```
+
+### Standings
+
+```{r}
+get_standings(2005)
+```
+
+2006 {data-navmenu="SEASONS" data-orientation=rows}
+===================================== 
+
+Row
+-------------------------------------
+
+### BLF {data-width=50}
+![](images/blf_logo.png)
+
+
+### 2006 BLF Results and Standings
+BUSCH BOWL CHAMPION: **`r champ2006`**  
+BUSCH BOWL RUNNER UP: **`r runnerup2006`**  
+MOST REG SEASON PTS: **`r mostptsteam2006`, `r mostptspts2006`**  
+HIGHEST ALL PLAY W%: **`r allplaypctteam2006`, `r allplaypctpct2006`**  
+
+Row
+-------------------------------------
+
+### Power Rank
+
+```{r}
+get_powerrk(2006)
+```
+
+### Standings
+
+```{r}
+get_standings(2006)
+```
+
+2007 {data-navmenu="SEASONS" data-orientation=rows}
+===================================== 
+
+Row
+-------------------------------------
+
+### BLF {data-width=50}
+![](images/blf_logo.png)
+
+
+### 2007 BLF Results and Standings
+BUSCH BOWL CHAMPION: **`r champ2007`**  
+BUSCH BOWL RUNNER UP: **`r runnerup2007`**  
+MOST REG SEASON PTS: **`r mostptsteam2007`, `r mostptspts2007`**  
+HIGHEST ALL PLAY W%: **`r allplaypctteam2007`, `r allplaypctpct2007`**  
+
+Row
+-------------------------------------
+
+### Power Rank
+
+```{r}
+get_powerrk(2007)
+```
+
+### Standings
+
+```{r}
+get_standings(2007)
+```
+
+
+2008 {data-navmenu="SEASONS" data-orientation=rows}
+===================================== 
+
+Row
+-------------------------------------
+
+### BLF {data-width=50}
+![](images/blf_logo.png)
+
+
+### 2008 BLF Results and Standings
+BUSCH BOWL CHAMPION: **`r champ2008`**  
+BUSCH BOWL RUNNER UP: **`r runnerup2008`**  
+MOST REG SEASON PTS: **`r mostptsteam2008`, `r mostptspts2008`**  
+HIGHEST ALL PLAY W%: **`r allplaypctteam2008`, `r allplaypctpct2008`**  
+
+Row
+-------------------------------------
+
+### Power Rank
+
+```{r}
+get_powerrk(2008)
+```
+
+### Standings
+
+```{r}
+get_standings(2008)
+```
+
+
+2009 {data-navmenu="SEASONS" data-orientation=rows}
+===================================== 
+
+Row
+-------------------------------------
+
+### BLF {data-width=50}
+![](images/blf_logo.png)
+
+### 2009 BLF Results and Standings
+BUSCH BOWL CHAMPION: **PHIL BASTRON**  
+BUSCH BOWL RUNNER UP: **DREW VOGT**  
+
+Row
+-------------------------------------
+
+### NOTICE
+
+2009 data has been **LOST**. Any information leading to the discover of this data is subject to a reward of a case of beer from MATT TRAEN.
+
+
+Information:
+
+I'm about 90% certain the league was hosted on ESPN. I've been unable to access it and I believe that back in 2009 ESPN did not archive old leagues. But I don't know that for sure. If you can still access this league please contact me to claim your reward. -MATT TRAEN
+
+
+2010 {data-navmenu="SEASONS" data-orientation=rows}
+===================================== 
+
+Row
+-------------------------------------
+
+### BLF {data-width=50}
+![](images/blf_logo.png)
+
+
+### 2010 BLF Results and Standings
+BUSCH BOWL CHAMPION: **`r champ2010`**  
+BUSCH BOWL RUNNER UP: **`r runnerup2010`**  
+MOST REG SEASON PTS: **`r mostptsteam2010`, `r mostptspts2010`**  
+HIGHEST ALL PLAY W%: **`r allplaypctteam2010`, `r allplaypctpct2010`**  
+
+Row
+-------------------------------------
+
+### Power Rank
+
+```{r}
+get_powerrk(2010)
+```
+
+### Standings
+
+```{r}
+get_standings(2010)
+```
+
+2011 {data-navmenu="SEASONS" data-orientation=rows}
+===================================== 
+
+Row
+-------------------------------------
+
+### BLF {data-width=50}
+![](images/blf_logo.png)
+
+
+### 2011 BLF Results and Standings
+BUSCH BOWL CHAMPION: **`r champ2011`**  
+BUSCH BOWL RUNNER UP: **`r runnerup2011`**  
+MOST REG SEASON PTS: **`r mostptsteam2011`, `r mostptspts2011`**  
+HIGHEST ALL PLAY W%: **`r allplaypctteam2011`, `r allplaypctpct2011`**  
+
+Row
+-------------------------------------
+
+### Power Rank
+
+```{r}
+get_powerrk(2011)
+```
+
+### Standings
+
+```{r}
+get_standings(2011)
+```
+
+
+2012 {data-navmenu="SEASONS" data-orientation=rows}
+===================================== 
+
+Row
+-------------------------------------
+
+### BLF {data-width=50}
+![](images/blf_logo.png)
+
+
+### 2012 BLF Results and Standings
+BUSCH BOWL CHAMPION: **`r champ2012`**  
+BUSCH BOWL RUNNER UP: **`r runnerup2012`**  
+MOST REG SEASON PTS: **`r mostptsteam2012`, `r mostptspts2012`**  
+HIGHEST ALL PLAY W%: **`r allplaypctteam2012`, `r allplaypctpct2012`**  
+
+Row
+-------------------------------------
+
+### Power Rank
+
+```{r}
+get_powerrk(2012)
+```
+
+### Standings
+
+```{r}
+get_standings(2012)
+```
+
+2013 {data-navmenu="SEASONS" data-orientation=rows}
+===================================== 
+
+Row
+-------------------------------------
+
+### BLF {data-width=50}
+![](images/blf_logo.png)
+
+
+### 2013 BLF Results and Standings
+BUSCH BOWL CHAMPION: **`r champ2013`**  
+BUSCH BOWL RUNNER UP: **`r runnerup2013`**  
+MOST REG SEASON PTS: **`r mostptsteam2013`, `r mostptspts2013`**  
+HIGHEST ALL PLAY W%: **`r allplaypctteam2013`, `r allplaypctpct2013`**  
+
+Row
+-------------------------------------
+
+### Power Rank
+
+```{r}
+get_powerrk(2013)
+```
+
+### Standings
+
+```{r}
+get_standings(2013)
+```
+
+2014 {data-navmenu="SEASONS" data-orientation=rows}
+===================================== 
+
+Row
+-------------------------------------
+
+### BLF {data-width=50}
+![](images/blf_logo.png)
+
+
+### 2014 BLF Results and Standings
+BUSCH BOWL CHAMPION: **`r champ2014`**  
+BUSCH BOWL RUNNER UP: **`r runnerup2014`**  
+MOST REG SEASON PTS: **`r mostptsteam2014`, `r mostptspts2014`**  
+HIGHEST ALL PLAY W%: **`r allplaypctteam2014`, `r allplaypctpct2014`**  
+
+Row
+-------------------------------------
+
+### Power Rank
+
+```{r}
+get_powerrk(2014)
+```
+
+### Standings
+
+```{r}
+get_standings(2014)
+```
+
+2015 {data-navmenu="SEASONS" data-orientation=rows}
+===================================== 
+
+Row
+-------------------------------------
+
+### BLF {data-width=50}
+![](images/blf_logo.png)
+
+
+### 2015 BLF Results and Standings
+BUSCH BOWL CHAMPION: **`r champ2015`**  
+BUSCH BOWL RUNNER UP: **`r runnerup2015`**  
+MOST REG SEASON PTS: **`r mostptsteam2015`, `r mostptspts2015`**  
+HIGHEST ALL PLAY W%: **`r allplaypctteam2015`, `r allplaypctpct2015`**  
+
+Row
+-------------------------------------
+
+### Power Rank
+
+```{r}
+get_powerrk(2015)
+```
+
+### Standings
+
+```{r}
+get_standings(2015)
+```
+
+2016 {data-navmenu="SEASONS" data-orientation=rows}
+===================================== 
+
+Row
+-------------------------------------
+
+### BLF {data-width=50}
+![](images/blf_logo.png)
+
+
+### 2016 BLF Results and Standings
+BUSCH BOWL CHAMPION: **`r champ2016`**  
+BUSCH BOWL RUNNER UP: **`r runnerup2016`**  
+MOST REG SEASON PTS: **`r mostptsteam2016`, `r mostptspts2016`**  
+HIGHEST ALL PLAY W%: **`r allplaypctteam2016`, `r allplaypctpct2016`**  
+
+Row
+-------------------------------------
+
+### Power Rank
+
+```{r}
+get_powerrk(2016)
+```
+
+### Standings
+
+```{r}
+get_standings(2016)
+```
+
+2017 {data-navmenu="SEASONS" data-orientation=rows}
+===================================== 
+
+Row
+-------------------------------------
+
+### BLF {data-width=50}
+![](images/blf_logo.png)
+
+
+### 2017 BLF Results and Standings
+BUSCH BOWL CHAMPION: **`r champ2017`**  
+BUSCH BOWL RUNNER UP: **`r runnerup2017`**  
+MOST REG SEASON PTS: **`r mostptsteam2017`, `r mostptspts2017`**  
+HIGHEST ALL PLAY W%: **`r allplaypctteam2017`, `r allplaypctpct2017`**  
+
+Row
+-------------------------------------
+
+### Power Rank
+
+```{r}
+get_powerrk(2017)
+```
+
+### Standings
+
+```{r}
+get_standings(2017)
+```
+
+2018 {data-navmenu="SEASONS" data-orientation=rows}
+===================================== 
+
+Row
+-------------------------------------
+
+### BLF {data-width=50}
+![](images/blf_logo.png)
+
+
+### 2018 BLF Results and Standings
+BUSCH BOWL CHAMPION: **`r champ2018`**  
+BUSCH BOWL RUNNER UP: **`r runnerup2018`**  
+MOST REG SEASON PTS: **`r mostptsteam2018`, `r mostptspts2018`**  
+HIGHEST ALL PLAY W%: **`r allplaypctteam2018`, `r allplaypctpct2018`**  
+
+Row
+-------------------------------------
+
+### Power Rank
+
+```{r}
+get_powerrk(2018)
+```
+
+### Standings
+
+```{r}
+get_standings(2018)
+```
+
+2019 {data-navmenu="SEASONS" data-orientation=rows}
+===================================== 
+
+Row
+-------------------------------------
+
+### BLF {data-width=50}
+![](images/blf_logo.png)
+
+
+### 2019 BLF Results and Standings
+BUSCH BOWL CHAMPION: **`r champ2019`**  
+BUSCH BOWL RUNNER UP: **`r runnerup2019`**  
+MOST REG SEASON PTS: **`r mostptsteam2019`, `r mostptspts2019`**  
+HIGHEST ALL PLAY W%: **`r allplaypctteam2019`, `r allplaypctpct2019`**  
+
+Row
+-------------------------------------
+
+### Power Rank
+
+```{r}
+get_powerrk(2019)
+```
+
+### Standings
+
+```{r}
+get_standings(2019)
+```
+
+BUSCH BOWL HISTORY {data-navmenu="RECORDS" data-orientation=rows}
+===================================== 
+
+Row
+-------------------------------------
+
+### BUSCH BOWL HISTORY
+
+``` {r}
+games_raw %>%
+  mutate(w_l = as.numeric(as.logical(PF > PA)),
+         BUSCH.BOWL = as.roman(Year - 2002)) %>%
+  filter(Type == "Championship") %>%
+  filter(w_l == 1) %>%
+  arrange(desc(Year)) %>%
+  select(BUSCH.BOWL, CHAMPION = Team, CH.SCORE = PF, RUNNER.UP = Opponent, RU.SCORE = PA) %>%
+    kable() %>%
+    kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE, position = "center")
+```
+
+
+ALL TIME {data-navmenu="RECORDS" data-orientation=rows}
+===================================== 
+
+**ALL-TIME LEADERBOARD**  
+
+Row
+-------------------------------------
+
+### Career
+
+```{r}
+#
+#
+# ALL TIME LEADERBOARD
+#
+#
+
+at_wins <- games_raw %>%
+  group_by(Team) %>%
+  filter(n() > 23) %>%
+  ungroup() %>%
+  mutate(w_l = as.numeric(as.logical(PF > PA))) %>%
+  group_by(Team) %>%
+  summarise(Record = "Most Wins", 
+            n = sum(w_l), 
+            Loss = sum(w_l == 0), 
+            Pct = as.integer(n / (n + Loss) * 1000)) %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
+  select(Record, n, Team)
+
+at_w_pct <- games_raw %>%
+  group_by(Team) %>%
+  filter(n() > 23) %>%
+  ungroup() %>%
+  mutate(w_l = as.numeric(as.logical(PF > PA))) %>%
+  group_by(Team) %>%
+  summarise(Record = "Win %", 
+            Win = sum(w_l), 
+            Loss = sum(w_l == 0), 
+            n = as.integer(Win / (Win + Loss) * 1000)) %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
+  select(Record, n, Team)
+
+at_po_appear <- games_raw %>%
+  select(Year, Team, Type) %>%
+  filter(Type == "Playoffs") %>%
+  distinct() %>%
+  count(Team) %>%
+  filter(n > 1) %>%
+  mutate(Record = "Playoff Appearances") %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
+  select(Record, n, Team)
+
+at_playoff_w <- games_raw %>%
+  filter(Type != "Reg") %>%
+  group_by(Team) %>%
+  filter(n() > 2) %>%
+  ungroup() %>%
+  mutate(w_l = as.numeric(as.logical(PF > PA))) %>%
+  group_by(Team) %>%
+  summarise(Record = "Playoff Wins", 
+            n = sum(w_l), 
+            Loss = sum(w_l == 0), 
+            Pct = as.integer(n / (n + Loss) * 1000)) %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
+  select(Record, n, Team)  
+
+at_bb_appear <- games_raw %>%
+  select(Year, Team, Type) %>%
+  filter(Type == "Championship") %>%
+  distinct() %>%
+  count(Team) %>%
+  filter(n > 1) %>%
+  mutate(Record = "Busch Bowl Appearances") %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
+  select(Record, n, Team)
+
+at_bb_w <- games_raw %>%
+  filter(Type == "Championship") %>%
+  group_by(Team) %>%
+  filter(n() > 2) %>%
+  ungroup() %>%
+  mutate(w_l = as.numeric(as.logical(PF > PA))) %>%
+  group_by(Team) %>%
+  summarise(Record = "Busch Bowl Wins", 
+            n = sum(w_l), 
+            Loss = sum(w_l == 0), 
+            Pct = as.integer(n / (n + Loss) * 1000)) %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
+  select(Record, n, Team) 
+
+at_apw <- games_allplay %>%
+  filter(Type == "Reg") %>%
+  group_by(Team) %>%
+  summarise(Record = "All Play Wins", 
+            n = as.integer(sum(APW)), 
+            APL = as.integer(sum(APL))) %>%
+  mutate(Pct = as.integer(n / (n + APL) * 1000)) %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
+  select(Record, n, Team)
+
+at_apw_pct <- games_allplay %>%
+  filter(Type == "Reg") %>%
+  group_by(Team) %>%
+  summarise(Record = "All Play W%", 
+            APW = as.integer(sum(APW)), 
+            APL = as.integer(sum(APL))) %>%
+  filter(APW > 150) %>%
+  mutate(n = as.integer(APW / (APW + APL) * 1000)) %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
+  select(Record, n, Team)
+
+at_ppg <- games_adj %>%
+  group_by(Team) %>%
+  filter(n() > 23) %>%
+  ungroup() %>%
+  group_by(Team) %>%
+  summarise(Record = "PPG", 
+            n = as.integer(mean(Adj_PF))) %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
+  select(Record, n, Team)
+
+rbind(at_wins, at_w_pct, at_po_appear, at_playoff_w, at_bb_appear, at_bb_w, at_apw, at_apw_pct, at_ppg) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE, position = "center")
+
+```
+
+### Season
+
+```{r}
+at_season_w_pct <- games_raw %>%
+  filter(Year != 2008) %>%
+  filter(Year != 2009) %>%
+  mutate(w_l = as.numeric(as.logical(PF > PA))) %>%
+  group_by(Team, Year) %>%
+  summarise(Record = "Win %", 
+            Win = sum(w_l), 
+            Loss = sum(w_l == 0), 
+            n = as.integer(Win / (Win + Loss) * 1000)) %>%
+  ungroup() %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
+  select(Record, n, Team, Year)
+
+at_season_apw_pct <- games_allplay %>%
+  filter(Type == "Reg") %>%
+  group_by(Team, Year) %>%
+  filter(n() > 2) %>%
+  summarise(Record = "All Play W%", 
+            APW = as.integer(sum(APW)), 
+            APL = as.integer(sum(APL))) %>%
+  mutate(n = as.integer(APW / (APW + APL) * 1000)) %>%
+  ungroup() %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
+  select(Record, n, Team, Year)
+
+at_season_ppg <- games_adj %>%
+  group_by(Team, Year) %>%
+  filter(n() > 2) %>%
+  summarise(Record = "PPG", 
+            n = as.integer(mean(Adj_PF))) %>%
+  ungroup() %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
+  select(Record, n, Team, Year)
+
+at_season_apw_low_pct <- games_allplay %>%
+  filter(Type == "Reg") %>%
+  group_by(Team, Year) %>%
+  filter(n() > 2) %>%
+  summarise(Record = "Lowest All Play W%", 
+            APW = as.integer(sum(APW)), 
+            APL = as.integer(sum(APL))) %>%
+  mutate(n = as.integer(APW / (APW + APL) * 1000)) %>%
+  ungroup() %>%
+  mutate(grp = dense_rank(n)) %>%
+  filter(grp == 1) %>%
+  select(Record, n, Team, Year)
+
+at_season_low_ppg <- games_adj %>%
+  group_by(Team, Year) %>%
+  filter(n() > 2) %>%
+  summarise(Record = "Lowest PPG", 
+            n = as.integer(mean(Adj_PF))) %>%
+  ungroup() %>%
+  mutate(grp = dense_rank(n)) %>%
+  filter(grp == 1) %>%
+  select(Record, n, Team, Year)
+
+rbind(at_season_w_pct, at_season_apw_pct, at_season_ppg,at_season_apw_low_pct, at_season_low_ppg) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE, position = "center")
+
+```
+
+### Game
+
+```{r}
+at_game_pts <- games_adj %>%
+  mutate(Record = "Points") %>%
+  arrange(desc(as.integer(Adj_PF))) %>%
+  rename(n = Adj_PF) %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
+  select(Record, n, Team, Year, Week)
+
+at_game_low_pts <- games_adj %>%
+  mutate(Record = "Fewest Points") %>%
+  arrange(Adj_PF) %>%
+  rename(n = Adj_PF) %>%
+  mutate(grp = dense_rank(n)) %>%
+  filter(grp == 1) %>%
+  select(Record, n, Team, Year, Week)
+
+rbind(at_game_pts, at_game_low_pts) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE, position = "center")
+
+```
+
+
+Row {data-height=30}
+-------------------------------------
+**CAREER**
+
+Row
+-------------------------------------
+
+### Career Wins
+
+``` {r}
+#
+#
+# ALL TIME RECORD TABLES
+#
+#
+
+games_raw %>%
+  group_by(Team) %>%
+  filter(n() > 23) %>%
+  ungroup() %>%
+  mutate(w_l = as.numeric(as.logical(PF > PA))) %>%
+  group_by(Team) %>%
+  summarise(Record = "Most Wins", 
+            n = sum(w_l), 
+            Loss = sum(w_l == 0), 
+            Pct = as.integer(n / (n + Loss) * 1000)) %>%
+  arrange(desc(n)) %>%
+  head(10) %>%
+  select(n, Team) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE, position = "center")
+```
+
+### Career Win% (min 24 games)
+
+```{r}
+games_raw %>%
+  group_by(Team) %>%
+  filter(n() > 23) %>%
+  ungroup() %>%
+  mutate(w_l = as.numeric(as.logical(PF > PA))) %>%
+  group_by(Team) %>%
+  summarise(Record = "Win %", 
+            Win = sum(w_l), 
+            Loss = sum(w_l == 0), 
+            n = as.integer(Win / (Win + Loss) * 1000)) %>%
+  arrange(desc(n)) %>%
+  head(10) %>%
+  select(n, Team) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE, position = "center")
+```
+
+### Career Playoff Appearances
+
+``` {r}
+games_raw %>%
+  select(Year, Team, Type) %>%
+  filter(Type == "Playoffs") %>%
+  distinct() %>%
+  count(Team) %>%
+  filter(n > 1) %>%
+  mutate(Record = "Playoff Appearances") %>%
+  arrange(desc(n)) %>%
+  head(10) %>%
+  select(n, Team) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE, position = "center")
+```
+
+### Career Playoff Wins
+
+```{r}
+games_raw %>%
+  filter(Type != "Reg") %>%
+  group_by(Team) %>%
+  filter(n() > 2) %>%
+  ungroup() %>%
+  mutate(w_l = as.numeric(as.logical(PF > PA))) %>%
+  group_by(Team) %>%
+  summarise(Record = "Playoff Wins", 
+            n = sum(w_l), 
+            Loss = sum(w_l == 0), 
+            Pct = as.integer(n / (n + Loss) * 1000)) %>%
+  arrange(desc(n)) %>%
+  head(10) %>%
+  select(n, Team) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE, position = "center") 
+```
+
+
+Row
+-------------------------------------
+
+### Career Busch Bowl Appearances
+
+``` {r}
+games_raw %>%
+  select(Year, Team, Type) %>%
+  filter(Type == "Championship") %>%
+  distinct() %>%
+  count(Team) %>%
+  filter(n > 1) %>%
+  mutate(Record = "Playoff Appearances") %>%
+  arrange(desc(n)) %>%
+  head(10) %>%
+  select(n, Team) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE, position = "center")
+```
+
+### Career Busch Bowl Wins
+
+```{r}
+games_raw %>%
+  filter(Type == "Championship") %>%
+  mutate(w_l = as.numeric(as.logical(PF > PA))) %>%
+  group_by(Team) %>%
+  summarise(Record = "Playoff Wins", 
+            n = sum(w_l), 
+            Loss = sum(w_l == 0), 
+            Pct = as.integer(n / (n + Loss) * 1000)) %>%
+  arrange(desc(n)) %>%
+  head(10) %>%
+  select(n, Team) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE, position = "center") 
+```
+
+### Career All Play Wins
+
+``` {r}
+games_allplay %>%
+  filter(Type == "Reg") %>%
+  group_by(Team) %>%
+  summarise(Record = "All Play Wins", 
+            n = as.integer(sum(APW)), 
+            APL = as.integer(sum(APL))) %>%
+  mutate(Pct = as.integer(n / (n + APL) * 1000)) %>%
+  arrange(desc(n)) %>%
+  head(10) %>%
+  select(n, Team) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE, position = "center")
+```
+
+### Career All Play W%
+
+``` {r}
+games_allplay %>%
+  filter(Type == "Reg") %>%
+  group_by(Team) %>%
+  summarise(Record = "All Play W%", 
+            APW = as.integer(sum(APW)), 
+            APL = as.integer(sum(APL))) %>%
+  filter(APW > 150) %>%
+  mutate(n = as.integer(APW / (APW + APL) * 1000)) %>%
+  arrange(desc(n)) %>%
+  head(10) %>%
+  select(n, Team) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE, position = "center")
+```
+
+### Career PPG
+
+```{r}
+games_adj %>%
+  group_by(Team) %>%
+  filter(n() > 23) %>%
+  ungroup() %>%
+  group_by(Team) %>%
+  summarise(Record = "PPG", 
+            n = as.integer(mean(Adj_PF))) %>%
+  arrange(desc(n)) %>%
+  head(10) %>%
+  select(n, Team) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE, position = "center") 
+```
+
+Row {data-height=30}
+-------------------------------------
+**SEASON**
+
+Row
+-------------------------------------
+
+### W% in a Season
+
+```{r}
+games_raw %>%
+  filter(Year != 2008) %>%
+  filter(Year != 2009) %>%
+  mutate(w_l = as.numeric(as.logical(PF > PA))) %>%
+  group_by(Team, Year) %>%
+  summarise(Record = "Win %", 
+            Win = sum(w_l), 
+            Loss = sum(w_l == 0), 
+            n = as.integer(Win / (Win + Loss) * 1000)) %>%
+  arrange(desc(n)) %>%
+  head(10) %>%
+  select(n, Team, Year) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE, position = "center") 
+
+```
+
+### All Play W% in a Season
+
+```{r}
+games_allplay %>%
+  filter(Type == "Reg") %>%
+  group_by(Team, Year) %>%
+  filter(n() > 2) %>%
+  summarise(Record = "All Play W%", 
+            APW = as.integer(sum(APW)), 
+            APL = as.integer(sum(APL))) %>%
+  mutate(n = as.integer(APW / (APW + APL) * 1000)) %>%
+  arrange(desc(n)) %>%
+  head(10) %>%
+  select(n, Team, Year) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE, position = "center") 
+
+```
+
+
+### PPG in a Season
+
+```{r}
+games_adj %>%
+  group_by(Team, Year) %>%
+  filter(n() > 2) %>%
+  summarise(Record = "PPG", 
+            n = as.integer(mean(Adj_PF))) %>%
+  arrange(desc(n)) %>%
+  head(10) %>%
+  select(n, Team, Year) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE, position = "center") 
+
+```
+
+Row
+-------------------------------------
+
+### Lowest All Play W% in a Season
+
+```{r}
+games_allplay %>%
+  filter(Type == "Reg") %>%
+  group_by(Team, Year) %>%
+  filter(n() > 2) %>%
+  summarise(Record = "Lowest All Play W%", 
+            APW = as.integer(sum(APW)), 
+            APL = as.integer(sum(APL))) %>%
+  mutate(n = as.integer(APW / (APW + APL) * 1000)) %>%
+  arrange(n) %>%
+  head(10) %>%
+  select(n, Team, Year) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE, position = "center") 
+```
+
+
+### Lowest PPG in a Season
+
+```{r}
+games_adj %>%
+  group_by(Team, Year) %>%
+  filter(n() > 2) %>%
+  summarise(Record = "Lowest PPG", 
+            n = as.integer(mean(Adj_PF))) %>%
+  arrange(n) %>%
+  head(10) %>%
+  select(n, Team, Year) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE, position = "center") 
+```
+
+
+Row {data-height=30}
+-------------------------------------
+**GAME**
+
+Row
+-------------------------------------
+
+### Points in a Game
+```{r}
+games_adj %>%
+  mutate(Record = "Points") %>%
+  arrange(desc(as.integer(Adj_PF))) %>%
+  rename(n = Adj_PF) %>%
+  head(10) %>%
+  select(n, Team, Year, Week) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE, position = "center") 
+```
+
+
+### Lowest Points in a Game
+```{r}
+games_adj %>%
+  mutate(Record = "Fewest Points") %>%
+  arrange(Adj_PF) %>%
+  rename(n = Adj_PF) %>%
+  head(10) %>%
+  select(n, Team, Year, Week) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE, position = "center") 
+
+```
+
+
+12 TEAM ERA {data-navmenu="RECORDS" data-orientation=rows}
+===================================== 
+
+**12 TEAM ERA LEADERBOARD**  
+
+Row
+-------------------------------------
+
+### Career
+
+```{r}
+#
+#
+# 12 TEAM LEADERBOARD
+#
+#
+
+at_wins <- games_raw %>%
+  filter(Year > 2012) %>%
+  group_by(Team) %>%
+  filter(n() > 23) %>%
+  ungroup() %>%
+  mutate(w_l = as.numeric(as.logical(PF > PA))) %>%
+  group_by(Team) %>%
+  summarise(Record = "Most Wins", 
+            n = sum(w_l), 
+            Loss = sum(w_l == 0), 
+            Pct = as.integer(n / (n + Loss) * 1000)) %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
+  select(Record, n, Team)
+
+at_w_pct <- games_raw %>%
+  filter(Year > 2012) %>%
+  group_by(Team) %>%
+  filter(n() > 23) %>%
+  ungroup() %>%
+  mutate(w_l = as.numeric(as.logical(PF > PA))) %>%
+  group_by(Team) %>%
+  summarise(Record = "Win %", 
+            Win = sum(w_l), 
+            Loss = sum(w_l == 0), 
+            n = as.integer(Win / (Win + Loss) * 1000)) %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
+  select(Record, n, Team)
+
+at_po_appear <- games_raw %>%
+  select(Year, Team, Type) %>%
+  filter(Year > 2012) %>%
+  filter(Type == "Playoffs") %>%
+  distinct() %>%
+  count(Team) %>%
+  filter(n > 1) %>%
+  mutate(Record = "Playoff Appearances") %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
+  select(Record, n, Team)
+
+at_playoff_w <- games_raw %>%
+  filter(Type != "Reg") %>%
+  filter(Year > 2012) %>%
+  group_by(Team) %>%
+  filter(n() > 2) %>%
+  ungroup() %>%
+  mutate(w_l = as.numeric(as.logical(PF > PA))) %>%
+  group_by(Team) %>%
+  summarise(Record = "Playoff Wins", 
+            n = sum(w_l), 
+            Loss = sum(w_l == 0), 
+            Pct = as.integer(n / (n + Loss) * 1000)) %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
+  select(Record, n, Team)  
+
+at_bb_appear <- games_raw %>%
+  select(Year, Team, Type) %>%
+  filter(Year > 2012) %>%
+  filter(Type == "Championship") %>%
+  distinct() %>%
+  count(Team) %>%
+  filter(n > 1) %>%
+  mutate(Record = "Busch Bowl Appearances") %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
+  select(Record, n, Team)
+
+at_bb_w <- games_raw %>%
+  filter(Type == "Championship") %>%
+  filter(Year > 2012) %>%
+  group_by(Team) %>%
+  filter(n() > 2) %>%
+  ungroup() %>%
+  mutate(w_l = as.numeric(as.logical(PF > PA))) %>%
+  group_by(Team) %>%
+  summarise(Record = "Busch Bowl Wins", 
+            n = sum(w_l), 
+            Loss = sum(w_l == 0), 
+            Pct = as.integer(n / (n + Loss) * 1000)) %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
+  select(Record, n, Team) 
+
+at_apw <- games_allplay %>%
+  filter(Type == "Reg") %>%
+  filter(Year > 2012) %>%
+  group_by(Team) %>%
+  summarise(Record = "All Play Wins", 
+            n = as.integer(sum(APW)), 
+            APL = as.integer(sum(APL))) %>%
+  mutate(Pct = as.integer(n / (n + APL) * 1000)) %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
+  select(Record, n, Team)
+
+at_apw_pct <- games_allplay %>%
+  filter(Type == "Reg") %>%
+  filter(Year > 2012) %>%
+  group_by(Team) %>%
+  summarise(Record = "All Play W%", 
+            APW = as.integer(sum(APW)), 
+            APL = as.integer(sum(APL))) %>%
+  filter(APW > 150) %>%
+  mutate(n = as.integer(APW / (APW + APL) * 1000)) %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
+  select(Record, n, Team)
+
+at_ppg <- games_adj %>%
+  group_by(Team) %>%
+  filter(n() > 23) %>%
+  ungroup() %>%
+  filter(Year > 2012) %>%
+  group_by(Team) %>%
+  summarise(Record = "PPG", 
+            n = as.integer(mean(Adj_PF))) %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
+  select(Record, n, Team)
+
+rbind(at_wins, at_w_pct, at_po_appear, at_playoff_w, at_bb_appear, at_bb_w, at_apw, at_apw_pct, at_ppg) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE, position = "center")
+
+```
+
+### Season
+
+```{r}
+at_season_w_pct <- games_raw %>%
+  filter(Year > 2012) %>%
+  mutate(w_l = as.numeric(as.logical(PF > PA))) %>%
+  group_by(Team, Year) %>%
+  summarise(Record = "Win %", 
+            Win = sum(w_l), 
+            Loss = sum(w_l == 0), 
+            n = as.integer(Win / (Win + Loss) * 1000)) %>%
+  ungroup() %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
+  select(Record, n, Team, Year)
+
+at_season_apw_pct <- games_allplay %>%
+  filter(Type == "Reg") %>%
+  filter(Year > 2012) %>%
+  group_by(Team, Year) %>%
+  filter(n() > 2) %>%
+  summarise(Record = "All Play W%", 
+            APW = as.integer(sum(APW)), 
+            APL = as.integer(sum(APL))) %>%
+  mutate(n = as.integer(APW / (APW + APL) * 1000)) %>%
+  ungroup() %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
+  select(Record, n, Team, Year)
+
+at_season_ppg <- games_adj %>%
+  filter(Year > 2012) %>%
+  group_by(Team, Year) %>%
+  filter(n() > 2) %>%
+  summarise(Record = "PPG", 
+            n = as.integer(mean(Adj_PF))) %>%
+  ungroup() %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
+  select(Record, n, Team, Year)
+
+at_season_apw_low_pct <- games_allplay %>%
+  filter(Type == "Reg") %>%
+  filter(Year > 2012) %>%
+  group_by(Team, Year) %>%
+  filter(n() > 2) %>%
+  summarise(Record = "Lowest All Play W%", 
+            APW = as.integer(sum(APW)), 
+            APL = as.integer(sum(APL))) %>%
+  mutate(n = as.integer(APW / (APW + APL) * 1000)) %>%
+  ungroup() %>%
+  mutate(grp = dense_rank(n)) %>%
+  filter(grp == 1) %>%
+  select(Record, n, Team, Year)
+
+at_season_low_ppg <- games_adj %>%
+  group_by(Team, Year) %>%
+  filter(Year > 2012) %>%
+  filter(n() > 2) %>%
+  summarise(Record = "Lowest PPG", 
+            n = as.integer(mean(Adj_PF))) %>%
+  ungroup() %>%
+  mutate(grp = dense_rank(n)) %>%
+  filter(grp == 1) %>%
+  select(Record, n, Team, Year)
+
+rbind(at_season_w_pct, at_season_apw_pct, at_season_ppg,at_season_apw_low_pct, at_season_low_ppg) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE, position = "center")
+
+```
+
+### Game
+
+```{r}
+at_game_pts <- games_adj %>%
+  filter(Year > 2012) %>%
+  mutate(Record = "Points") %>%
+  arrange(desc(as.integer(Adj_PF))) %>%
+  rename(n = Adj_PF) %>%
+  mutate(grp = dense_rank(desc(n))) %>%
+  filter(grp == 1) %>%
+  select(Record, n, Team, Year, Week)
+
+at_game_low_pts <- games_adj %>%
+  filter(Year > 2012) %>%
+  mutate(Record = "Fewest Points") %>%
+  arrange(Adj_PF) %>%
+  rename(n = Adj_PF) %>%
+  mutate(grp = dense_rank(n)) %>%
+  filter(grp == 1) %>%
+  select(Record, n, Team, Year, Week)
+
+rbind(at_game_pts, at_game_low_pts) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE, position = "center")
+
+```
+
+
+Row {data-height=30}
+-------------------------------------
+**CAREER**
+
+Row
+-------------------------------------
+
+### Career Wins
+
+``` {r}
+#
+#
+# 12 TEAM ERA TABLES
+#
+#
+
+games_raw %>%
+  group_by(Team) %>%
+  filter(n() > 23) %>%
+  ungroup() %>%
+  filter(Year > 2012) %>%
+  mutate(w_l = as.numeric(as.logical(PF > PA))) %>%
+  group_by(Team) %>%
+  summarise(Record = "Most Wins", 
+            n = sum(w_l), 
+            Loss = sum(w_l == 0), 
+            Pct = as.integer(n / (n + Loss) * 1000)) %>%
+  arrange(desc(n)) %>%
+  head(10) %>%
+  select(n, Team) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE, position = "center")
+```
+
+### Career Win% (min 24 games)
+
+```{r}
+games_raw %>%
+  filter(Year > 2012) %>%
+  group_by(Team) %>%
+  filter(n() > 23) %>%
+  ungroup() %>%
+  mutate(w_l = as.numeric(as.logical(PF > PA))) %>%
+  group_by(Team) %>%
+  summarise(Record = "Win %", 
+            Win = sum(w_l), 
+            Loss = sum(w_l == 0), 
+            n = as.integer(Win / (Win + Loss) * 1000)) %>%
+  arrange(desc(n)) %>%
+  head(10) %>%
+  select(n, Team) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE, position = "center")
+```
+
+### Career Playoff Appearances
+
+``` {r}
+games_raw %>%
+  select(Year, Team, Type) %>%
+  filter(Year > 2012) %>%
+  filter(Type == "Playoffs") %>%
+  distinct() %>%
+  count(Team) %>%
+  filter(n > 1) %>%
+  mutate(Record = "Playoff Appearances") %>%
+  arrange(desc(n)) %>%
+  head(10) %>%
+  select(n, Team) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE, position = "center")
+```
+
+### Career Playoff Wins
+
+```{r}
+games_raw %>%
+  filter(Year > 2012) %>%
+  filter(Type != "Reg") %>%
+  group_by(Team) %>%
+  filter(n() > 2) %>%
+  ungroup() %>%
+  mutate(w_l = as.numeric(as.logical(PF > PA))) %>%
+  group_by(Team) %>%
+  summarise(Record = "Playoff Wins", 
+            n = sum(w_l), 
+            Loss = sum(w_l == 0), 
+            Pct = as.integer(n / (n + Loss) * 1000)) %>%
+  arrange(desc(n)) %>%
+  head(10) %>%
+  select(n, Team) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE, position = "center") 
+```
+
+
+Row
+-------------------------------------
+
+### Career Busch Bowl Appearances
+
+``` {r}
+games_raw %>%
+  select(Year, Team, Type) %>%
+  filter(Year > 2012) %>%
+  filter(Type == "Championship") %>%
+  distinct() %>%
+  count(Team) %>%
+  mutate(Record = "Playoff Appearances") %>%
+  arrange(desc(n)) %>%
+  head(10) %>%
+  select(n, Team) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE, position = "center")
+```
+
+### Career Busch Bowl Wins
+
+```{r}
+games_raw %>%
+  filter(Year > 2012) %>%
+  filter(Type == "Championship") %>%
+  mutate(w_l = as.numeric(as.logical(PF > PA))) %>%
+  group_by(Team) %>%
+  summarise(Record = "Playoff Wins", 
+            n = sum(w_l), 
+            Loss = sum(w_l == 0), 
+            Pct = as.integer(n / (n + Loss) * 1000)) %>%
+  arrange(desc(n)) %>%
+  filter(n > 0) %>%
+  head(10) %>%
+  select(n, Team) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE, position = "center") 
+```
+
+### Career All Play Wins
+
+``` {r}
+games_allplay %>%
+  filter(Year > 2012) %>%
+  filter(Type == "Reg") %>%
+  group_by(Team) %>%
+  summarise(Record = "All Play Wins", 
+            n = as.integer(sum(APW)), 
+            APL = as.integer(sum(APL))) %>%
+  mutate(Pct = as.integer(n / (n + APL) * 1000)) %>%
+  arrange(desc(n)) %>%
+  head(10) %>%
+  select(n, Team) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE, position = "center")
+```
+
+### Career All Play W%
+
+``` {r}
+games_allplay %>%
+  filter(Year > 2012) %>%
+  filter(Type == "Reg") %>%
+  group_by(Team) %>%
+  summarise(Record = "All Play W%", 
+            APW = as.integer(sum(APW)), 
+            APL = as.integer(sum(APL))) %>%
+  filter(APW > 150) %>%
+  mutate(n = as.integer(APW / (APW + APL) * 1000)) %>%
+  arrange(desc(n)) %>%
+  head(10) %>%
+  select(n, Team) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE, position = "center")
+```
+
+### Career PPG
+
+```{r}
+games_adj %>%
+  filter(Year > 2012) %>%
+  group_by(Team) %>%
+  filter(n() > 23) %>%
+  ungroup() %>%
+  group_by(Team) %>%
+  summarise(Record = "PPG", 
+            n = as.integer(mean(Adj_PF))) %>%
+  arrange(desc(n)) %>%
+  head(10) %>%
+  select(n, Team) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE, position = "center") 
+```
+
+Row {data-height=30}
+-------------------------------------
+**SEASON**
+
+Row
+-------------------------------------
+
+### W% in a Season
+
+```{r}
+games_raw %>%
+  filter(Year > 2012) %>%
+  mutate(w_l = as.numeric(as.logical(PF > PA))) %>%
+  group_by(Team, Year) %>%
+  summarise(Record = "Win %", 
+            Win = sum(w_l), 
+            Loss = sum(w_l == 0), 
+            n = as.integer(Win / (Win + Loss) * 1000)) %>%
+  arrange(desc(n)) %>%
+  head(10) %>%
+  select(n, Team, Year) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE, position = "center") 
+
+```
+
+### All Play W% in a Season
+
+```{r}
+games_allplay %>%
+  filter(Year > 2012) %>%
+  filter(Type == "Reg") %>%
+  group_by(Team, Year) %>%
+  filter(n() > 2) %>%
+  summarise(Record = "All Play W%", 
+            APW = as.integer(sum(APW)), 
+            APL = as.integer(sum(APL))) %>%
+  mutate(n = as.integer(APW / (APW + APL) * 1000)) %>%
+  arrange(desc(n)) %>%
+  head(10) %>%
+  select(n, Team, Year) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE, position = "center") 
+
+```
+
+
+### PPG in a Season
+
+```{r}
+games_adj %>%
+  filter(Year > 2012) %>%
+  group_by(Team, Year) %>%
+  filter(n() > 2) %>%
+  summarise(Record = "PPG", 
+            n = as.integer(mean(Adj_PF))) %>%
+  arrange(desc(n)) %>%
+  head(10) %>%
+  select(n, Team, Year) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE, position = "center") 
+
+```
+
+Row
+-------------------------------------
+
+### Lowest All Play W% in a Season
+
+```{r}
+games_allplay %>%
+  filter(Year > 2012) %>%
+  filter(Type == "Reg") %>%
+  group_by(Team, Year) %>%
+  filter(n() > 2) %>%
+  summarise(Record = "Lowest All Play W%", 
+            APW = as.integer(sum(APW)), 
+            APL = as.integer(sum(APL))) %>%
+  mutate(n = as.integer(APW / (APW + APL) * 1000)) %>%
+  arrange(n) %>%
+  head(10) %>%
+  select(n, Team, Year) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE, position = "center") 
+```
+
+
+### Lowest PPG in a Season
+
+```{r}
+games_adj %>%
+  filter(Year > 2012) %>%
+  group_by(Team, Year) %>%
+  filter(n() > 2) %>%
+  summarise(Record = "Lowest PPG", 
+            n = as.integer(mean(Adj_PF))) %>%
+  arrange(n) %>%
+  head(10) %>%
+  select(n, Team, Year) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE, position = "center") 
+```
+
+
+Row {data-height=30}
+-------------------------------------
+**GAME**
+
+Row
+-------------------------------------
+
+### Points in a Game
+```{r}
+games_adj %>%
+  filter(Year > 2012) %>%
+  mutate(Record = "Points") %>%
+  arrange(desc(as.integer(Adj_PF))) %>%
+  rename(n = Adj_PF) %>%
+  head(10) %>%
+  select(n, Team, Year, Week) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE, position = "center") 
+```
+
+
+### Lowest Points in a Game
+```{r}
+games_adj %>%
+  filter(Year > 2012) %>%
+  mutate(Record = "Fewest Points") %>%
+  arrange(Adj_PF) %>%
+  rename(n = Adj_PF) %>%
+  head(10) %>%
+  select(n, Team, Year, Week) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE, position = "center") 
+
+```
+
+HEAD-TO-HEAD {data-navmenu="RECORDS" data-orientation=rows}
+===================================== 
+
+Row
+-------------------------------------
+
+### All Time
+
+```{r}
+games_raw %>%
+  mutate(win = as.numeric(PF > PA)) %>%
+  mutate(loss = as.numeric(PA > PF)) %>%
+  filter(Team == team01 |
+           Team == team02 |
+           Team == team03 |
+           Team == team04 |
+           Team == team05 |
+           Team == team06 |
+           Team == team07 |
+           Team == team08 |
+           Team == team09 |
+           Team == team10 |
+           Team == team11 |
+           Team == team12) %>%
+  group_by(Team, Opponent) %>%
+  summarise(W = sum(win), L = sum(loss)) %>%
+  unite("W/L", c(W, L), sep = "-") %>%
+  pivot_wider(names_from = Opponent, values_from = "W/L") %>%
+  select(Team, 
+         team01, 
+         team02,
+         team03,
+         team04,
+         team05,
+         team06,
+         team07,
+         team08,
+         team09,
+         team10,
+         team12) %>%
+  kable(align = "c") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), position = "center") %>%
+    add_header_above(c(" ", "OPPONENTS" = 11))
+
+```
+
+Row
+-------------------------------------
+
+### 12 Team Era
+
+```{r}
+games_raw %>%
+  filter(Year > 2012) %>%
+  mutate(win = as.numeric(PF > PA)) %>%
+  mutate(loss = as.numeric(PA > PF)) %>%
+  filter(Team == team01 |
+           Team == team02 |
+           Team == team03 |
+           Team == team04 |
+           Team == team05 |
+           Team == team06 |
+           Team == team07 |
+           Team == team08 |
+           Team == team09 |
+           Team == team10 |
+           Team == team11 |
+           Team == team12) %>%
+  group_by(Team, Opponent) %>%
+  summarise(W = sum(win), L = sum(loss)) %>%
+  unite("W/L", c(W, L), sep = "-") %>%
+  pivot_wider(names_from = Opponent, values_from = "W/L") %>%
+  select(Team, 
+         team01, 
+         team02,
+         team03,
+         team04,
+         team05,
+         team06,
+         team07,
+         team08,
+         team09,
+         team10,
+         team12) %>%
+  kable(align = "c") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), position = "center") %>%
+    add_header_above(c(" ", "OPPONENTS" = 11))
+
+```
