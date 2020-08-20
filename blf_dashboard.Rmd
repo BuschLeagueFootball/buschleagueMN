@@ -15,6 +15,7 @@ library(knitr)
 library(kableExtra)
 library(plotly)
 library(rvest)
+library(ggplot2)
 
 ##############################################################################
 #
@@ -1059,9 +1060,61 @@ games_adj %>%
 
 ```
 
-### Record Watch
+### News
 
 ```{r}
+
+createPosGroups <- function(pos, ranks, grpRanks, grpArr) {
+  
+  data.frame(pos_rank = paste(pos, ranks, sep = ""), Pos_Group = paste(pos, grpRanks), grpArr)
+  
+}
+
+grpTopQBs <- createPosGroups("QB", 1:6, "1-6", 1)
+grpBotQBs <- createPosGroups("QB", 7:12, "7-12", 2)
+grpTopRBs <- createPosGroups("RB", 1:6, "1-6", 3)
+grpMidRBs <- createPosGroups("RB", 7:12, "7-12", 4)
+grpBotRBs <- createPosGroups("RB", 13:24, "13-24", 5)
+grpTopWRs <- createPosGroups("WR", 1:6, "1-6", 6)
+grpMidWRs <- createPosGroups("WR", 7:12, "7-12", 7)
+grpBotWRs <- createPosGroups("WR", 13:24, "13-24", 8)
+grpTopTEs <- createPosGroups("TE", 1:6, "1-6", 9)
+grpBotTEs <- createPosGroups("TE", 7:12, "7-12", 10)
+
+grpAll <- bind_rows(list(grpBotQBs, 
+                         grpBotRBs, 
+                         grpBotTEs, 
+                         grpBotWRs, 
+                         grpMidRBs, 
+                         grpMidWRs, 
+                         grpTopQBs, 
+                         grpTopRBs, 
+                         grpTopTEs, 
+                         grpTopWRs))
+
+df1 <- draft %>%
+  group_by(Year, Position) %>%
+  mutate(Position = ifelse(Position == "Quarterback", "QB",
+                           ifelse(Position == "Running Back", "RB",
+                                  ifelse(Position == "Wide Receiver", "WR",
+                                         ifelse(Position == "Tight End", "TE", NA)))),
+         pos_rank = order(Value, decreasing = TRUE),
+         pos_rank = paste(Position, pos_rank, sep = "")) %>%
+  ungroup() %>%
+  left_join(grpAll) %>%
+  group_by(Pos_Group, Year, grpArr, Position) %>%
+  summarise(Dollars = sum(Value)) %>%
+  arrange(grpArr) %>%
+  ungroup() %>%
+  filter(!is.na(Pos_Group))
+
+fig1 <- ggplot(df1, aes(x = Year, y = Dollars, color = Pos_Group)) + 
+  geom_point() +
+  geom_line() + 
+  facet_wrap(~Position) +
+  theme_minimal()
+
+plotly_build(fig1)
 
 ##############################################################################
 # FOR SEASON AND GAME RECORDS WE CAN JUST BIND LEADERBOARD AND FILTER FOR 
