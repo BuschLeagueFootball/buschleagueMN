@@ -36,7 +36,7 @@ team10 <- "TIM LANG"
 team11 <- "TODD TRAEN"
 team12 <- "TREVOR SOUPIR"
 
-active_teams <- c(team01, team02, team03, team04, team05, team06, team07, team08, team09, team10, team12) # no Todd until 2020 games are played
+active_teams <- c(team01, team02, team03, team04, team05, team06, team07, team08, team09, team10, team11, team12) # no Todd until 2020 games are played
 
 #
 # NEED TO UPDATE WITH NEW TEAM NAMES AND SWITCH JEFF OUT WITH TODD
@@ -46,19 +46,19 @@ teamdf <- tibble(
   Team = c("NightTraen_Reign", 
            "Breaston_Plants Inc", 
            "Heartbreak_Kid", 
-           "DILLON_PANTHERS", 
+           "The_Progrum", 
            "B1G_HAUS", 
            "Team_Aponte", 
-           "Pre-Snap_Adjustment", 
+           "West Canaan_Coyotes", 
            "Just Drew _It", 
            "The_Peppy Kids", 
            "Soup_du Jour", 
-           "Easy As_A Bisi", 
+           "Hold Me Closer_Tiny Danztler", 
            "Hart_attack"),
   owner = c("MATT TRAEN", 
             "TIM GREVE", 
             "TIM LANG", 
-            "JEFF KING", 
+            "TODD TRAEN", 
             "DAVID PIKUS", 
             "MAX APONTE", 
             "JOHN THOMPSON", 
@@ -857,6 +857,7 @@ allplaypctpct2016 <- get_allplaypctpct(2016)
 allplaypctpct2017 <- get_allplaypctpct(2017)
 allplaypctpct2018 <- get_allplaypctpct(2018)
 allplaypctpct2019 <- get_allplaypctpct(2019)
+allplaypctpct2020 <- get_allplaypctpct(2020)
 
 wkly_avg_std <- games_adj %>%
   filter(Year == this_year) %>%
@@ -909,121 +910,167 @@ Row
 get_powerrk(this_year)
 ```
 
-### This Year's Points Breakdown
+### Playoff Standings
 ```{r}
-#
+
+div_df <- teamdf
+div_df$div <- c("div3", 
+                "div3", 
+                "div1", 
+                "div2", 
+                "div4", 
+                "div3", 
+                "div4", 
+                "div1", 
+                "div4",
+                "div2",
+                "div2",
+                "div1")
+
+po_standings <- games_ty %>% 
+  inner_join(div_df, by = c("Team" = "owner")) %>% 
+  mutate(wl = ifelse(PF > PA, 1, 0)) %>%
+  group_by(Team, div) %>%
+  summarise(L = n() - sum(wl), 
+            W = sum(wl),
+            Pts = sum(PF)) %>%
+  ungroup() %>%
+  group_by(div) %>%
+  mutate(div_ranks = order(order(W, Pts))) %>%
+  ungroup() %>%
+  arrange(desc(div_ranks), desc(W), desc(Pts)) %>%
+  mutate(Rank = row_number()) %>%
+  select(Rank, Team, W, L, Pts)
+
+po_standings$gb_basis <- po_standings[6,3]
+po_standings$pb_basis <- po_standings[6,5] 
+
+po_standings <- po_standings %>%
+  mutate(GB = W - gb_basis,
+         PB = round(Pts - pb_basis,1)) %>%
+  select(1:5, 8:9) %>%
+  kable() %>%
+    kable_styling(bootstrap_options = c("striped", 
+                                        "hover", 
+                                        "condensed"), 
+                  full_width = TRUE, 
+                  position = "center")
+
+po_standings
+
+# Total pts vs ESPN preds & Optimal lines-ups... need to figure out ESPN API
 # GETTING PTS AND EXPECTED
 #
 
-espn_pred <- rosterdata %>%
-  filter(Week < 13) %>%
-  filter(Starter == "Starter") %>%
-  group_by(owner) %>%
-  summarise(Predicted = sum(Predicted, na.rm = TRUE)) %>%
-  ungroup() %>%
-  rename(Team = owner) %>%
-  filter(!is.na(Team))
-
-espn_actual <- rosterdata %>%
-  filter(Week < 13) %>%
-  filter(Starter == "Starter") %>%
-  group_by(owner) %>%
-  summarise(Actual = sum(Actual, na.rm = TRUE)) %>%
-  ungroup() %>%
-  rename(Team = owner)
+# espn_pred <- rosterdata %>%
+#   filter(Week < 13) %>%
+#   filter(Starter == "Starter") %>%
+#   group_by(owner) %>%
+#   summarise(Predicted = sum(Predicted, na.rm = TRUE)) %>%
+#   ungroup() %>%
+#   rename(Team = owner) %>%
+#   filter(!is.na(Team))
+# 
+# espn_actual <- rosterdata %>%
+#   filter(Week < 13) %>%
+#   filter(Starter == "Starter") %>%
+#   group_by(owner) %>%
+#   summarise(Actual = sum(Actual, na.rm = TRUE)) %>%
+#   ungroup() %>%
+#   rename(Team = owner)
 
 #
 # GETTING OPTIMAL
 #
 
-ranked <- rosterdata %>%
-  select(Week, Player, Position, owner, Actual) %>%
-  group_by(owner, Position, Week) %>%
-  mutate(Rank = rank(-Actual, ties.method = "first")) %>%
-  arrange(owner) %>%
-  filter(!is.na(owner))
-
-rankedqbs <- ranked %>%
-  filter(Position == "Quarterback") %>%
-  filter(Rank == 1) %>%
-  mutate(PosOrder = 1)
-
-rankedrbs <- ranked %>%
-  filter(Position == "Running Back") %>%
-  filter(Rank <= 2) %>%
-  mutate(PosOrder = 2)
-
-rankedwrs <- ranked %>%
-  filter(Position == "Wide Receiver") %>%
-  filter(Rank <= 2) %>%
-  mutate(PosOrder = 3)
-
-rankedtes <- ranked %>%
-  filter(Position == "Tight End") %>%
-  filter(Rank <= 1) %>%
-  mutate(PosOrder = 4)
-
-rankeddef <- ranked %>%
-  filter(Position == "Defense") %>%
-  filter(Rank <= 1) %>%
-  mutate(PosOrder = 6)
-
-rankedfl <- ranked %>%
-  anti_join(bind_rows(rankedrbs, 
-                      rankedwrs, 
-                      rankedtes)) %>%
-  filter(Position %in% c("Running Back", 
-                         "Wide Receiver", 
-                         "Tight End")) %>%
-  group_by(Week, owner) %>%
-  mutate(Rank = rank(-Actual, ties.method = "first")) %>%
-  filter(Rank == 1) %>%
-  mutate(Position = "Flex") %>%
-  mutate(PosOrder = 5)
-
-optimallineup <- bind_rows(rankedqbs, 
-                           rankedrbs, 
-                           rankedwrs, 
-                           rankedtes, 
-                           rankedfl, 
-                           rankeddef) %>%
-  arrange(owner,Week,PosOrder)
-
-optimal_total <- optimallineup %>%
-  group_by(owner) %>%
-  summarise(Optimal = sum(Actual)) %>%
-  ungroup() %>%
-  rename(Team = owner)
-
-pts_vs_opt <- inner_join(espn_actual, optimal_total) %>% 
-  arrange(desc(Actual))
-
-pts_vs_opt$Team <- factor(pts_vs_opt$Team, levels = pts_vs_opt$Team[order(pts_vs_opt$Actual, decreasing = TRUE)])
-espn_pred$Team <- factor(espn_pred$Team, levels = pts_vs_opt$Team[order(pts_vs_opt$Actual, decreasing = TRUE)])
-
-pts_vs_opt <- pts_vs_opt %>%
-  pivot_longer(-Team, names_to = "category", values_to = "n")
-
-ggplot() +
-  geom_line(pts_vs_opt, 
-            mapping = aes(x = Team, y = n), 
-            linetype = "dashed", 
-            size = .5) + 
-  geom_point(pts_vs_opt, 
-             mapping = aes(x = Team, y = n, color = category), 
-             size = 4) +
-  geom_point(espn_pred, 
-             mapping = aes(x = Team, y = Predicted, color = "ESPN Pred"), 
-             size = 4,
-             shape = 1) +
-  scale_color_manual("Legend", values = c("black", "orange", "grey")) +
-  labs(title = "Total Pts vs ESPN Preds & Optimal Lineups",
-       subtitle = "Sorted by actual points scored (black)", 
-       caption = "*black line = spread between actual pts and most possible pts") +
-  ylab("Points") +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle = 90)) +
-  theme(legend.position="top")
+# ranked <- rosterdata %>%
+#   select(Week, Player, Position, owner, Actual) %>%
+#   group_by(owner, Position, Week) %>%
+#   mutate(Rank = rank(-Actual, ties.method = "first")) %>%
+#   arrange(owner) %>%
+#   filter(!is.na(owner))
+# 
+# rankedqbs <- ranked %>%
+#   filter(Position == "Quarterback") %>%
+#   filter(Rank == 1) %>%
+#   mutate(PosOrder = 1)
+# 
+# rankedrbs <- ranked %>%
+#   filter(Position == "Running Back") %>%
+#   filter(Rank <= 2) %>%
+#   mutate(PosOrder = 2)
+# 
+# rankedwrs <- ranked %>%
+#   filter(Position == "Wide Receiver") %>%
+#   filter(Rank <= 2) %>%
+#   mutate(PosOrder = 3)
+# 
+# rankedtes <- ranked %>%
+#   filter(Position == "Tight End") %>%
+#   filter(Rank <= 1) %>%
+#   mutate(PosOrder = 4)
+# 
+# rankeddef <- ranked %>%
+#   filter(Position == "Defense") %>%
+#   filter(Rank <= 1) %>%
+#   mutate(PosOrder = 6)
+# 
+# rankedfl <- ranked %>%
+#   anti_join(bind_rows(rankedrbs, 
+#                       rankedwrs, 
+#                       rankedtes)) %>%
+#   filter(Position %in% c("Running Back", 
+#                          "Wide Receiver", 
+#                          "Tight End")) %>%
+#   group_by(Week, owner) %>%
+#   mutate(Rank = rank(-Actual, ties.method = "first")) %>%
+#   filter(Rank == 1) %>%
+#   mutate(Position = "Flex") %>%
+#   mutate(PosOrder = 5)
+# 
+# optimallineup <- bind_rows(rankedqbs, 
+#                            rankedrbs, 
+#                            rankedwrs, 
+#                            rankedtes, 
+#                            rankedfl, 
+#                            rankeddef) %>%
+#   arrange(owner,Week,PosOrder)
+# 
+# optimal_total <- optimallineup %>%
+#   group_by(owner) %>%
+#   summarise(Optimal = sum(Actual)) %>%
+#   ungroup() %>%
+#   rename(Team = owner)
+# 
+# pts_vs_opt <- inner_join(espn_actual, optimal_total) %>% 
+#   arrange(desc(Actual))
+# 
+# pts_vs_opt$Team <- factor(pts_vs_opt$Team, levels = pts_vs_opt$Team[order(pts_vs_opt$Actual, decreasing = TRUE)])
+# espn_pred$Team <- factor(espn_pred$Team, levels = pts_vs_opt$Team[order(pts_vs_opt$Actual, decreasing = TRUE)])
+# 
+# pts_vs_opt <- pts_vs_opt %>%
+#   pivot_longer(-Team, names_to = "category", values_to = "n")
+# 
+# ggplot() +
+#   geom_line(pts_vs_opt, 
+#             mapping = aes(x = Team, y = n), 
+#             linetype = "dashed", 
+#             size = .5) + 
+#   geom_point(pts_vs_opt, 
+#              mapping = aes(x = Team, y = n, color = category), 
+#              size = 4) +
+#   geom_point(espn_pred, 
+#              mapping = aes(x = Team, y = Predicted, color = "ESPN Pred"), 
+#              size = 4,
+#              shape = 1) +
+#   scale_color_manual("Legend", values = c("black", "orange", "grey")) +
+#   labs(title = "Total Pts vs ESPN Preds & Optimal Lineups",
+#        subtitle = "Sorted by actual points scored (black)", 
+#        caption = "*black line = spread between actual pts and most possible pts") +
+#   ylab("Points") +
+#   theme_minimal() +
+#   theme(axis.text.x = element_text(angle = 90)) +
+#   theme(legend.position="top")
 ```
 
 Row
@@ -1060,7 +1107,7 @@ games_adj %>%
 
 ```
 
-### News
+### Draft Trends
 
 ```{r}
 
