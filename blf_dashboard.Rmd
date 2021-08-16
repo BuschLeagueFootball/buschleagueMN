@@ -36,7 +36,7 @@ team10 <- "TIM LANG"
 team11 <- "TODD TRAEN"
 team12 <- "TREVOR SOUPIR"
 
-active_teams <- c(team01, team02, team03, team04, team05, team06, team07, team08, team09, team10, team11, team12) # no Todd until 2020 games are played
+active_teams <- c(team01, team02, team03, team04, team05, team06, team07, team08, team09, team10, team11, team12)
 
 #
 # NEED TO UPDATE WITH NEW TEAM NAMES AND SWITCH JEFF OUT WITH TODD
@@ -771,6 +771,7 @@ champ2016 <- get_champion(2016)
 champ2017 <- get_champion(2017)
 champ2018 <- get_champion(2018)
 champ2019 <- get_champion(2019)
+champ2020 <- get_champion(2020)
 
 runnerup2003 <- get_runnerup(2003)
 runnerup2004 <- get_runnerup(2004)
@@ -789,6 +790,7 @@ runnerup2016 <- get_runnerup(2016)
 runnerup2017 <- get_runnerup(2017)
 runnerup2018 <- get_runnerup(2018)
 runnerup2019 <- get_runnerup(2019)
+runnerup2020 <- get_runnerup(2020)
 
 mostptsteam2003 <- get_mostptsteam(2003)
 mostptsteam2004 <- get_mostptsteam(2004)
@@ -806,6 +808,7 @@ mostptsteam2016 <- get_mostptsteam(2016)
 mostptsteam2017 <- get_mostptsteam(2017)
 mostptsteam2018 <- get_mostptsteam(2018)
 mostptsteam2019 <- get_mostptsteam(2019)
+mostptsteam2020 <- get_mostptsteam(2020)
 
 mostptspts2003 <- get_mostptspts(2003)
 mostptspts2004 <- get_mostptspts(2004)
@@ -823,6 +826,7 @@ mostptspts2016 <- get_mostptspts(2016)
 mostptspts2017 <- get_mostptspts(2017)
 mostptspts2018 <- get_mostptspts(2018)
 mostptspts2019 <- get_mostptspts(2019)
+mostptspts2020 <- get_mostptspts(2020)
 
 allplaypctteam2003 <- get_allplaypctteam(2003)
 allplaypctteam2004 <- get_allplaypctteam(2004)
@@ -840,6 +844,7 @@ allplaypctteam2016 <- get_allplaypctteam(2016)
 allplaypctteam2017 <- get_allplaypctteam(2017)
 allplaypctteam2018 <- get_allplaypctteam(2018)
 allplaypctteam2019 <- get_allplaypctteam(2019)
+allplaypctteam2020 <- get_allplaypctteam(2020)
 
 allplaypctpct2003 <- get_allplaypctpct(2003)
 allplaypctpct2004 <- get_allplaypctpct(2004)
@@ -3030,6 +3035,38 @@ get_powerrk(2019)
 ```{r}
 get_standings(2019)
 ```
+
+2020 {data-navmenu="SEASONS" data-orientation=rows}
+===================================== 
+
+Row
+-------------------------------------
+
+### BLF {data-width=50}
+![](images/blf_logo.png)
+
+
+### 2020 BLF Results and Standings
+BUSCH BOWL CHAMPION: **`r champ2020`**  
+BUSCH BOWL RUNNER UP: **`r runnerup2020`**  
+MOST REG SEASON PTS: **`r mostptsteam2020`, `r mostptspts2020`**  
+HIGHEST ALL PLAY W%: **`r allplaypctteam2020`, `r allplaypctpct2020`**  
+
+Row
+-------------------------------------
+
+### Power Rank
+
+```{r}
+get_powerrk(2020)
+```
+
+### Standings
+
+```{r}
+get_standings(2020)
+```
+
 
 BUSCH BOWL HISTORY {data-navmenu="RECORDS" data-orientation=rows}
 ===================================== 
