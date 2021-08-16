@@ -1151,7 +1151,8 @@ df1 <- draft %>%
                                   ifelse(Position == "Wide Receiver", "WR",
                                          ifelse(Position == "Tight End", "TE", NA)))),
          pos_rank = order(Value, decreasing = TRUE),
-         pos_rank = paste(Position, pos_rank, sep = "")) %>%
+         pos_rank = paste(Position, pos_rank, sep = ""),
+         Year = as.character(Year)) %>%
   ungroup() %>%
   left_join(grpAll) %>%
   group_by(Pos_Group, Year, grpArr, Position) %>%
@@ -1162,7 +1163,7 @@ df1 <- draft %>%
 
 fig1 <- ggplot(df1, aes(x = Year, y = Dollars, color = Pos_Group)) + 
   geom_point() +
-  geom_line() + 
+  geom_line(aes(group = 1)) + 
   facet_wrap(~Position) +
   theme_minimal()
 
@@ -1208,7 +1209,8 @@ war_display %>%
   arrange(desc(Total)) %>%
   DT::datatable(options = list(
     class = "display",
-    pageLength = 10
+    pageLength = 10,
+    scrollY = "350px"
   ))
 
 ```
@@ -1247,7 +1249,8 @@ draft %>%
   pivot_wider(names_from = Year, values_from = Value) %>%
   DT::datatable(options = list(
     class = "display",
-    pageLength = 50
+    pageLength = 50,
+    scrollY = "600px"
   ))
 
 ```
