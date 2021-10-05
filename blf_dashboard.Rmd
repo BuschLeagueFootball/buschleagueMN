@@ -3731,9 +3731,6 @@ at_bb_appear <- games_raw %>%
 at_bb_w <- games_raw %>%
   filter(Type == "Championship") %>%
   filter(Year > 2012) %>%
-  group_by(Team) %>%
-  filter(n() > 2) %>%
-  ungroup() %>%
   mutate(w_l = as.numeric(as.logical(PF > PA))) %>%
   group_by(Team) %>%
   summarise(Record = "Busch Bowl Wins", 
